@@ -81,14 +81,14 @@ pre-commit run --all-files
 
 ### 1. Install Dependencies
 
-<!-- ```bash
+```bash
 # Install uv (fast Python package manager)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and setup the repository
-git clone git@
-cd GenesisHumanoid
-``` -->
+git clone git@github.com:UMass-Embodied-AGI/Genesis-Humanoid.git
+cd Genesis-Humanoid
+```
 
 ### 2. Install the `gs-env` package
 
@@ -98,7 +98,7 @@ uv sync --package gs-env
 
 # pip
 uv pip compile pyproject.toml -o requirements.txt --python /PATH/TO/PYTHON
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### 3. Activate the environment
