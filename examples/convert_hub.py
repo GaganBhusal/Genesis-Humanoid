@@ -71,9 +71,6 @@ def hub_to_motion_data(
     motion_data["fps"] = data["fps"]
     motion_data["link_names"] = link_names
     motion_data["dof_names"] = dof_names
-    # save foot link indices and names for downstream usage
-    foot_links_idx = env.robot.foot_links_idx
-    motion_data["foot_link_indices"] = foot_links_idx
     pos_list = []
     quat_list = []
     dof_pos_list = []

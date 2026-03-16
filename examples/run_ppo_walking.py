@@ -155,18 +155,26 @@ def evaluate_policy(
 
     wrapped_env = GenesisEnvWrapper(env, device=env.device)
 
-    # Setup GIF recording if not showing viewer
+    # Setup GIF/video recording if not showing viewer
     gif_path = None
+    video_path = None
     if not show_viewer:
-        # Create gif directory structure
+        # Create output directory structure
         gif_dir = Path("./gif") / exp_name
         gif_dir.mkdir(parents=True, exist_ok=True)
 
         gif_path = gif_dir / f"{num_ckpt}.gif"
+        video_path = gif_dir / f"{num_ckpt}.mp4"
         print(f"Will save GIF to: {gif_path}")
+        print(f"Will save video to: {video_path}")
 
         # Start rendering
-        env.start_rendering()  # type: ignore
+        env.start_rendering(
+            save_gif=True,
+            gif_path=str(gif_path),
+            save_video=True,
+            video_path=str(video_path),
+        )  # type: ignore
 
     # Create PPO algorithm and load checkpoint
     ppo = PPO(
@@ -182,7 +190,15 @@ def evaluate_policy(
     print("Starting evaluation...")
 
     def evaluate() -> None:
-        nonlocal wrapped_env, inference_policy, gif_path, show_viewer, num_ckpt, exp_name, env_args
+        nonlocal \
+            wrapped_env, \
+            inference_policy, \
+            gif_path, \
+            video_path, \
+            show_viewer, \
+            num_ckpt, \
+            exp_name, \
+            env_args
         if show_viewer:
             print("Running endlessly (press Ctrl+C to stop)")
         else:
@@ -265,11 +281,17 @@ def evaluate_policy(
                     )  # Unpack actor and critic obs, use actor for policy
                     total_reward = 0.0
 
-        # Stop rendering and save GIF if recording
+        # Stop rendering and save GIF/video if recording
         if not show_viewer and gif_path is not None:
-            print("Stopping rendering and saving GIF...")
-            env.stop_rendering(save_gif=True, gif_path=str(gif_path))  # type: ignore
+            print("Stopping rendering and saving GIF/video...")
+            env.stop_rendering(
+                save_gif=True,
+                gif_path=str(gif_path),
+                save_video=True,
+                video_path=str(video_path),
+            )  # type: ignore
             print(f"GIF saved to: {gif_path}")
+            print(f"Video saved to: {video_path}")
 
         print(f"Evaluation of checkpoint {ckpt_path} completed successfully!")
         print("Final evaluation results:")

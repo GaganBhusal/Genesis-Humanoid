@@ -195,14 +195,22 @@ def evaluate_policy(
     )
     wrapped_env = GenesisEnvWrapper(env, device=env.device)
 
-    # Setup GIF if headless
+    # Setup GIF/video recording if headless
     gif_path = None
+    video_path = None
     if not show_viewer:
         gif_dir = Path("./gif") / exp_name
         gif_dir.mkdir(parents=True, exist_ok=True)
         gif_path = gif_dir / f"{num_ckpt}.gif"
+        video_path = gif_dir / f"{num_ckpt}.mp4"
         print(f"Will save GIF to: {gif_path}")
-        env.start_rendering()  # type: ignore
+        print(f"Will save video to: {video_path}")
+        env.start_rendering(
+            save_gif=True,
+            gif_path=str(gif_path),
+            save_video=True,
+            video_path=str(video_path),
+        )  # type: ignore
 
     # Recreate BC algo and load weights
     bc = BC(env=wrapped_env, cfg=algo_cfg, device=wrapped_env.device)
@@ -216,6 +224,7 @@ def evaluate_policy(
             wrapped_env, \
             inference_policy, \
             gif_path, \
+            video_path, \
             show_viewer, \
             num_ckpt, \
             exp_name, \
@@ -243,6 +252,7 @@ def evaluate_policy(
 
         motion_id = 0
         step_count = 0
+        eval_env_idx = torch.tensor([0], device=env.device, dtype=torch.long)
 
         link_name_to_idx: dict[str, int] = {}
         for link_name in env.scene.objects.keys():
@@ -250,19 +260,17 @@ def evaluate_policy(
 
         while True:
             env.time_since_reset[0] = 0.0
-            env.hard_reset_motion(torch.IntTensor([0]), motion_id)
-            env.hard_sync_motion(torch.IntTensor([0]))
+            motion_id_tensor = torch.tensor([motion_id], device=env.device, dtype=torch.long)
+            env.hard_reset_motion(eval_env_idx, motion_id)
+            env.hard_sync_motion(eval_env_idx)
             obs = wrapped_env.obs
-            while (
-                env.motion_times[0]
-                < env.motion_lib.get_motion_length(torch.IntTensor([motion_id])) - 0.02
-            ):
+            while env.motion_times[0] < env.motion_lib.get_motion_length(motion_id_tensor) - 0.02:
                 with torch.no_grad():
                     action = traced_policy(obs)  # type: ignore[misc]
                 env.apply_action(action)
                 terminated = env.get_terminated()
                 if terminated[0]:
-                    env.hard_sync_motion(torch.IntTensor([0]))
+                    env.hard_sync_motion(eval_env_idx)
                 env.update_history()
                 wrapped_env.update_obs_history()
                 obs = wrapped_env.obs
@@ -288,9 +296,15 @@ def evaluate_policy(
                     print(f"Step {step_count}")
 
                 if not show_viewer and gif_path is not None and step_count >= 500:
-                    print("Stopping rendering and saving GIF...")
-                    env.stop_rendering(save_gif=True, gif_path=str(gif_path))  # type: ignore
+                    print("Stopping rendering and saving GIF/video...")
+                    env.stop_rendering(
+                        save_gif=True,
+                        gif_path=str(gif_path),
+                        save_video=True,
+                        video_path=str(video_path),
+                    )  # type: ignore
                     print(f"GIF saved to: {gif_path}")
+                    print(f"Video saved to: {video_path}")
                     return
 
             env.time_since_reset[0] = 0.0

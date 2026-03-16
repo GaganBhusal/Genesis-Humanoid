@@ -11,6 +11,7 @@ import yaml
 from gs_env.sim.envs.config.registry import EnvArgsRegistry
 from gs_env.sim.envs.config.schema import MotionEnvArgs
 from gs_env.sim.scenes.config.registry import SceneArgsRegistry
+from utils import compute_terminate_after_floor_collision_mask
 
 
 def lafan_to_motion_data(
@@ -32,14 +33,12 @@ def lafan_to_motion_data(
     motion_data["fps"] = 30
     motion_data["link_names"] = link_names
     motion_data["dof_names"] = dof_names
-    # save foot link indices and names for downstream usage
-    foot_links_idx = env.robot.foot_links_idx
-    motion_data["foot_link_indices"] = foot_links_idx
     pos_list = []
     quat_list = []
     dof_pos_list = []
     link_pos_list = []
     link_quat_list = []
+    floor_terminate_mask_list = []
     foot_contact_list = []
 
     def run() -> dict[str, Any]:
@@ -59,6 +58,9 @@ def lafan_to_motion_data(
             dof_pos_list.append(env.dof_pos[0].clone())
             link_pos_list.append(env.link_positions[0].clone())
             link_quat_list.append(env.link_quaternions[0].clone())
+            floor_terminate_mask_list.append(
+                compute_terminate_after_floor_collision_mask(env.link_positions[0])
+            )
 
             # compute foot contact
             foot_pos = env.link_positions[0, foot_links_idx, :]
@@ -96,6 +98,10 @@ def lafan_to_motion_data(
         motion_data["dof_pos"] = torch.stack(dof_pos_list).numpy()
         motion_data["link_pos"] = torch.stack(link_pos_list).numpy()
         motion_data["link_quat"] = torch.stack(link_quat_list).numpy()
+        motion_data["terminate_after_floor_collision_link_names"] = link_names
+        motion_data["terminate_after_floor_collision_mask"] = torch.stack(
+            floor_terminate_mask_list
+        ).numpy()
         motion_data["foot_contact"] = torch.stack(foot_contact_list).numpy()
 
         return motion_data

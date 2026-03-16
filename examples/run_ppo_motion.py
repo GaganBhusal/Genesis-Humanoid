@@ -162,18 +162,26 @@ def evaluate_policy(
 
     wrapped_env = GenesisEnvWrapper(env, device=env.device)
 
-    # Setup GIF recording if not showing viewer
+    # Setup GIF/video recording if not showing viewer
     gif_path = None
+    video_path = None
     if not show_viewer:
-        # Create gif directory structure
+        # Create output directory structure
         gif_dir = Path("./gif") / exp_name
         gif_dir.mkdir(parents=True, exist_ok=True)
 
         gif_path = gif_dir / f"{num_ckpt}.gif"
+        video_path = gif_dir / f"{num_ckpt}.mp4"
         print(f"Will save GIF to: {gif_path}")
+        print(f"Will save video to: {video_path}")
 
         # Start rendering
-        env.start_rendering()  # type: ignore
+        env.start_rendering(
+            save_gif=True,
+            gif_path=str(gif_path),
+            save_video=True,
+            video_path=str(video_path),
+        )  # type: ignore
 
     # Create PPO algorithm and load checkpoint
     ppo = PPO(
@@ -193,6 +201,7 @@ def evaluate_policy(
             wrapped_env, \
             inference_policy, \
             gif_path, \
+            video_path, \
             show_viewer, \
             num_ckpt, \
             exp_name, \
@@ -239,6 +248,7 @@ def evaluate_policy(
 
         motion_id = 0
         step_count = 0
+        eval_env_idx = torch.tensor([0], device=env.device, dtype=torch.long)
 
         link_name_to_idx = {}
         for link_name in env.scene.objects.keys():
@@ -249,20 +259,11 @@ def evaluate_policy(
 
         while True:
             env.time_since_reset[0] = 0.0
-            env.hard_reset_motion(
-                torch.IntTensor(
-                    [
-                        0,
-                    ]
-                ),
-                motion_id,
-            )
-            env.hard_sync_motion(torch.IntTensor([0]))
+            motion_id_tensor = torch.tensor([motion_id], device=env.device, dtype=torch.long)
+            env.hard_reset_motion(eval_env_idx, motion_id)
+            env.hard_sync_motion(eval_env_idx)
             obs = wrapped_env.obs
-            while (
-                env.motion_times[0]
-                < env.motion_lib.get_motion_length(torch.IntTensor([motion_id])) - 0.02
-            ):
+            while env.motion_times[0] < env.motion_lib.get_motion_length(motion_id_tensor) - 0.02:
                 # Get action from policy
                 with torch.no_grad():
                     action = inference_policy(obs)  # type: ignore[misc]
@@ -271,7 +272,7 @@ def evaluate_policy(
                 env.apply_action(action)
                 terminated = env.get_terminated()
                 if terminated[0]:
-                    env.hard_sync_motion(torch.IntTensor([0]))
+                    env.hard_sync_motion(eval_env_idx)
                 env.update_history()
                 wrapped_env.update_obs_history()
                 obs = wrapped_env.obs
@@ -294,24 +295,29 @@ def evaluate_policy(
                 env.scene.scene.clear_debug_objects()
                 for i in range(len(env.robot.foot_links_idx)):
                     env.scene.scene.draw_debug_arrow(
-                        env.link_positions[0, env.robot.foot_links_idx[i]],
-                        env.foot_contact_weighted[0, i]
-                        * torch.tensor([0.0, 0.0, 1.0], device=env.device),
+                        env.link_positions[0, env.robot.foot_links_idx[i]].cpu(),
+                        (
+                            env.foot_contact_weighted[0, i]
+                            * torch.tensor([0.0, 0.0, 1.0], device=env.device)
+                        ).cpu(),
                         radius=0.01,
                         color=(0.0, 1.0, 0.0),
                     )
-                    foot_link_pos = env.ref_tracking_link_pos_local_yaw[
-                        :, foot_link_tracking_idx[i]
-                    ]
-                    foot_link_pos = quat_apply(ref_quat_yaw, foot_link_pos)
-                    foot_link_pos += env.ref_base_pos
-                    env.scene.scene.draw_debug_arrow(
-                        foot_link_pos,
-                        env.ref_foot_contact[0, i]
-                        * torch.tensor([0.0, 0.0, 0.5], device=env.device),
-                        radius=0.01,
-                        color=(0.0, 0.0, 1.0),
-                    )
+                    if i < len(foot_link_tracking_idx):
+                        foot_link_pos = env.ref_tracking_link_pos_local_yaw[
+                            :, foot_link_tracking_idx[i]
+                        ]
+                        foot_link_pos = quat_apply(ref_quat_yaw, foot_link_pos)
+                        foot_link_pos += env.ref_base_pos
+                        env.scene.scene.draw_debug_arrow(
+                            foot_link_pos.cpu(),
+                            (
+                                env.ref_foot_contact[0, i]
+                                * torch.tensor([0.0, 0.0, 0.5], device=env.device)
+                            ).cpu(),
+                            radius=0.01,
+                            color=(0.0, 0.0, 1.0),
+                        )
 
                 step_count += 1
 
@@ -319,12 +325,18 @@ def evaluate_policy(
                 if step_count % 50 == 0:
                     print(f"Step {step_count}")
 
-                # Stop rendering and save GIF if recording
-                if not show_viewer and gif_path is not None and step_count >= 500:
-                    print("Stopping rendering and saving GIF...")
-                    env.stop_rendering(save_gif=True, gif_path=str(gif_path))  # type: ignore
-                    print(f"GIF saved to: {gif_path}")
-                    exit()
+            # Motion finished - save GIF/video if recording
+            if not show_viewer and gif_path is not None:
+                print(f"Motion finished after {step_count} steps. Saving GIF/video...")
+                env.stop_rendering(
+                    save_gif=True,
+                    gif_path=str(gif_path),
+                    save_video=True,
+                    video_path=str(video_path),
+                )  # type: ignore
+                print(f"GIF saved to: {gif_path}")
+                print(f"Video saved to: {video_path}")
+                return
 
             env.time_since_reset[0] = 0.0
             while True:

@@ -48,6 +48,7 @@ class LeggedRobotEnvArgs(EnvArgs):
     reset_yaw_range: tuple[float, float] = (-np.pi, np.pi)
     reset_dof_pos_range: tuple[float, float] = (-0.15, 0.15)
     terminate_after_collision_on: list[str]
+    terminate_after_floor_collision_on: list[str] = []
 
 
 class WalkingEnvArgs(LeggedRobotEnvArgs):

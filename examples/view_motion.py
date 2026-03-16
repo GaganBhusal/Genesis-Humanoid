@@ -27,17 +27,17 @@ def view_motion(env_args: Any) -> None:
     def run() -> None:
         nonlocal env
         motion_id = 0
+        env_idx = torch.tensor([0], device=env.device, dtype=torch.long)
         while True:
             env.time_since_reset[0] = 0.0
-            env.hard_reset_motion(torch.IntTensor([0]), motion_id)
-            env.hard_sync_motion(torch.IntTensor([0]))
+            motion_id_tensor = torch.tensor([motion_id], device=env.device, dtype=torch.long)
+            env.hard_reset_motion(env_idx, motion_id)
+            env.hard_sync_motion(env_idx)
             last_update_time = time.time()
-            while env.motion_times[0] + 0.02 < env.motion_lib.get_motion_length(
-                torch.IntTensor([motion_id])
-            ):
+            while env.motion_times[0] + 0.02 < env.motion_lib.get_motion_length(motion_id_tensor):
                 env.scene.scene.step()
                 env.time_since_reset[0] += 0.02
-                env.hard_sync_motion(torch.IntTensor([0]))
+                env.hard_sync_motion(env_idx)
                 env.update_buffers()
                 for link_name in env.scene.objects.keys():
                     link_pos = env.ref_tracking_link_pos_global[:, link_name_to_idx[link_name]]
@@ -46,9 +46,11 @@ def view_motion(env_args: Any) -> None:
                 env.scene.scene.clear_debug_objects()
                 for i in range(len(env.robot.foot_links_idx)):
                     env.scene.scene.draw_debug_arrow(
-                        env.link_positions[0, env.robot.foot_links_idx[i]],
-                        env.ref_foot_contact_weighted[0, i]
-                        * torch.tensor([0.0, 0.0, 0.5], device=env.device),
+                        env.link_positions[0, env.robot.foot_links_idx[i]].cpu(),
+                        (
+                            env.ref_foot_contact_weighted[0, i]
+                            * torch.tensor([0.0, 0.0, 0.5], device=env.device)
+                        ).cpu(),
                         radius=0.01,
                         color=(0.0, 0.0, 1.0),
                     )

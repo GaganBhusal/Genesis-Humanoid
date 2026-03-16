@@ -60,7 +60,6 @@ def retarget_smplx(
         "fps": fps,
         "link_names": raw_tracking_link_names,
         "dof_names": env.dof_names,
-        "foot_link_indices": foot_links_idx,
     }
     base_idx = raw_tracking_link_names.index("pelvis")
     retargeted_tracking_link_names = [link.name for link in env.robot.robot.links]
@@ -78,7 +77,6 @@ def retarget_smplx(
         "fps": fps,
         "link_names": retargeted_tracking_link_names,
         "dof_names": env.dof_names,
-        "foot_link_indices": env.robot.foot_links_idx,
     }
 
     frame_idx = 0

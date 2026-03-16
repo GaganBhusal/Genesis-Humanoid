@@ -39,10 +39,12 @@ class MotionLib:
         device: torch.device = _DEFAULT_DEVICE,
         target_fps: float = 50.0,
         tracking_link_names: list[str] | None = None,
+        robot_link_names: list[str] | None = None,
     ) -> None:
         self._device = device
         self._target_fps = target_fps
         self._tracking_link_names = tracking_link_names
+        self._robot_link_names = robot_link_names
         self._motion_obs_steps = None
         foot_contac_weights = torch.tensor(
             [225 - (i - 15) ** 2 for i in range(31)], dtype=torch.float, device=self._device
@@ -77,6 +79,7 @@ class MotionLib:
         motion_link_ang_vel_local = []
         motion_foot_contact = []
         motion_foot_contact_weighted = []
+        motion_floor_terminate_mask = []
 
         full_motion_files, full_motion_weights = self._fetch_motion_files(motion_file)
         num_motion_files = len(full_motion_files)
@@ -112,6 +115,7 @@ class MotionLib:
             dt = 1.0 / fps
             num_frames = base_pos.shape[0]
             length = dt * (num_frames - 1)
+            floor_terminate_mask = self._load_floor_terminate_mask(motion_data, num_frames)
 
             base_lin_vel = torch.zeros_like(base_pos)
             base_lin_vel[:-1, :] = fps * (base_pos[1:, :] - base_pos[:-1, :])
@@ -164,6 +168,9 @@ class MotionLib:
                 link_pos_global = (1.0 - blend_u.unsqueeze(1)) * link_pos_global[
                     idx0
                 ] + blend_u.unsqueeze(1) * link_pos_global[idx1]
+                floor_terminate_mask = floor_terminate_mask[
+                    torch.round(phase * (num_frames - 1)).long()
+                ]
 
                 # quaternions: slerp
                 base_quat = slerp(base_quat[idx0], base_quat[idx1], blend)
@@ -274,6 +281,7 @@ class MotionLib:
             motion_link_ang_vel_local.append(link_ang_vel_local)
             motion_foot_contact.append(foot_contact)
             motion_foot_contact_weighted.append(foot_contact_weighted)
+            motion_floor_terminate_mask.append(floor_terminate_mask)
 
         assert len(self._dof_names) > 0, "Dof names list is empty"
 
@@ -301,6 +309,7 @@ class MotionLib:
         self._motion_link_ang_vel_local = torch.cat(motion_link_ang_vel_local, dim=0)
         self._motion_foot_contact = torch.cat(motion_foot_contact, dim=0)
         self._motion_foot_contact_weighted = torch.cat(motion_foot_contact_weighted, dim=0)
+        self._motion_floor_terminate_mask = torch.cat(motion_floor_terminate_mask, dim=0)
 
         lengths_shifted = self._motion_num_frames.roll(1)
         lengths_shifted[0] = 0
@@ -311,6 +320,50 @@ class MotionLib:
         print(
             f"Loaded {self.num_motions:d} motions with a total length of {self.total_length:.3f}s."
         )
+
+    def _load_floor_terminate_mask(
+        self, motion_data: dict[str, Any], num_frames: int
+    ) -> torch.Tensor:
+        raw_floor_mask = motion_data.get("terminate_after_floor_collision_mask")
+        if raw_floor_mask is None:
+            num_robot_links = (
+                len(self._robot_link_names) if self._robot_link_names is not None else 0
+            )
+            return torch.zeros((num_frames, num_robot_links), dtype=torch.bool, device=self._device)
+
+        floor_mask = torch.tensor(raw_floor_mask, dtype=torch.bool, device=self._device)
+        if floor_mask.ndim != 2 or floor_mask.shape[0] != num_frames:
+            raise ValueError(
+                "terminate_after_floor_collision_mask must have shape [num_frames, num_links]."
+            )
+
+        floor_link_names = list(
+            motion_data.get(
+                "terminate_after_floor_collision_link_names",
+                motion_data.get("link_names", []),
+            )
+        )
+        if floor_mask.shape[1] != len(floor_link_names):
+            raise ValueError(
+                "terminate_after_floor_collision_mask width does not match its link name list."
+            )
+
+        if self._robot_link_names is None:
+            self._robot_link_names = floor_link_names
+            return floor_mask
+
+        aligned_mask = torch.zeros(
+            (num_frames, len(self._robot_link_names)),
+            dtype=torch.bool,
+            device=self._device,
+        )
+        robot_link_idx = {name: idx for idx, name in enumerate(self._robot_link_names)}
+        for src_idx, link_name in enumerate(floor_link_names):
+            dst_idx = robot_link_idx.get(link_name)
+            if dst_idx is not None:
+                aligned_mask[:, dst_idx] = floor_mask[:, src_idx]
+
+        return aligned_mask
 
     def sample_motion_ids(
         self, n: int, motion_difficulty: torch.Tensor | None = None
@@ -427,6 +480,7 @@ class MotionLib:
         torch.Tensor,
         torch.Tensor,
         torch.Tensor,
+        torch.Tensor,
     ]:
         assert motion_times.min() >= 0.0, "motion_times must be non-negative"
         # snap to discrete frame grid using unified fps and clamp within motion length
@@ -453,6 +507,7 @@ class MotionLib:
         link_lin_vel_local = self._motion_link_lin_vel_local[frame_idx]
         link_ang_vel = self._motion_link_ang_vel[frame_idx]
         link_ang_vel_local = self._motion_link_ang_vel_local[frame_idx]
+        floor_terminate_mask = self._motion_floor_terminate_mask[frame_idx]
         foot_contact = self._motion_foot_contact[frame_idx]
         foot_contact_weighted = self._motion_foot_contact_weighted[frame_idx]
 
@@ -472,6 +527,7 @@ class MotionLib:
             link_lin_vel_local,
             link_ang_vel,
             link_ang_vel_local,
+            floor_terminate_mask,
             foot_contact,
             foot_contact_weighted,
         )

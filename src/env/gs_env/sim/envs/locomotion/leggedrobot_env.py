@@ -1,8 +1,10 @@
 import importlib
+from pathlib import Path
 from typing import Any
 
 import genesis as gs
 import gymnasium as gym
+import imageio
 import numpy as np
 import torch
 from PIL import Image
@@ -211,12 +213,35 @@ class LeggedRobotEnv(BaseEnv):
         self._terminate_link_idx_local = []
         for name in self._args.terminate_after_collision_on:
             self._terminate_link_idx_local.append(self._robot.get_link_idx_local_by_name(name))
+        self._robot_link_idx_global = torch.tensor(
+            [self._robot.get_link(name).idx for name in self._robot.link_names],
+            dtype=gs.tc_int,
+            device=self._device,
+        )
+        self._terminate_floor_link_idx_global = torch.empty(0, dtype=gs.tc_int, device=self._device)
+        self._ground_link_idx_global: int | None = None
+        plane = getattr(self._scene, "_plane", None)
+        if plane is not None and len(plane.links) > 0:
+            self._ground_link_idx_global = plane.links[0].idx
+        if len(self._args.terminate_after_floor_collision_on) > 0:
+            if self._ground_link_idx_global is None:
+                raise ValueError(
+                    "terminate_after_floor_collision_on requires a scene with a ground plane."
+                )
+            self._terminate_floor_link_idx_global = self._link_names_to_global_idx_tensor(
+                self._args.terminate_after_floor_collision_on
+            )
 
         # rendering
         self._rendered_images = []
         self._rendering = False
-        self.camera_lookat = torch.tensor([0.0, 0.0, 0.0], device=self._device)
-        self.camera_pos = torch.tensor([-1.0, -1.0, 0.5], device=self._device)
+        self._gif_writer: Any | None = None
+        self._video_writer: Any | None = None
+        self._gif_path: str | None = None
+        self._video_path: str | None = None
+        self._rendered_frame_count = 0
+        self.camera_lookat = torch.tensor([0.0, 0.0, 0.5], device=self._device)
+        self.camera_pos = torch.tensor([0.0, -3.0, 0.8], device=self._device)
 
         # Additional timers specific to this environment
         self._random_push_time = 4.0  # seconds
@@ -279,15 +304,72 @@ class LeggedRobotEnv(BaseEnv):
             > 1.0,
             dim=-1,
         )
+        floor_collision_mask = self._check_floor_collision()
         reset_buf |= contact_force_mask
+        reset_buf |= floor_collision_mask
         self.reset_buf[:] = reset_buf
         termination_dict = {}
         termination_dict["tilt"] = tilt_mask.clone()
         termination_dict["base_height"] = height_mask.clone()
         termination_dict["contact_force"] = contact_force_mask.clone()
+        termination_dict["floor_collision"] = floor_collision_mask.clone()
         termination_dict["any"] = reset_buf.clone()
         self._extra_info["termination"] = termination_dict
         return reset_buf
+
+    def _link_names_to_global_idx_tensor(self, link_names: list[str]) -> torch.Tensor:
+        if len(link_names) == 0:
+            return torch.empty(0, dtype=gs.tc_int, device=self._device)
+        return torch.tensor(
+            [self._robot.get_link(name).idx for name in link_names],
+            dtype=gs.tc_int,
+            device=self._device,
+        )
+
+    def _check_floor_collision(
+        self, terminate_link_idx_global: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        if terminate_link_idx_global is None:
+            terminate_link_idx_global = self._terminate_floor_link_idx_global
+        if terminate_link_idx_global.numel() == 0:
+            return torch.zeros(self.num_envs, dtype=torch.bool, device=self._device)
+
+        if terminate_link_idx_global.ndim == 1:
+            valid_terminate_idx = None
+        elif terminate_link_idx_global.ndim == 2:
+            valid_terminate_idx = terminate_link_idx_global >= 0
+            if not valid_terminate_idx.any():
+                return torch.zeros(self.num_envs, dtype=torch.bool, device=self._device)
+        else:
+            raise ValueError("terminate_link_idx_global must be a 1D or 2D tensor.")
+
+        if self._ground_link_idx_global is None:
+            raise RuntimeError("Ground link index is not initialized for floor collision checks.")
+
+        contacts = self.scene.rigid_solver.collider.get_contacts(as_tensor=True, to_torch=True)
+        link_a = contacts["link_a"]
+        link_b = contacts["link_b"]
+
+        valid_mask = (link_a >= 0) & (link_b >= 0)
+        if terminate_link_idx_global.ndim == 1:
+            link_a_in_set = (link_a.unsqueeze(-1) == terminate_link_idx_global).any(dim=-1)
+            link_b_in_set = (link_b.unsqueeze(-1) == terminate_link_idx_global).any(dim=-1)
+        else:
+            assert valid_terminate_idx is not None
+            expanded_idx = terminate_link_idx_global.unsqueeze(1)
+            expanded_valid_idx = valid_terminate_idx.unsqueeze(1)
+            link_a_in_set = ((link_a.unsqueeze(-1) == expanded_idx) & expanded_valid_idx).any(
+                dim=-1
+            )
+            link_b_in_set = ((link_b.unsqueeze(-1) == expanded_idx) & expanded_valid_idx).any(
+                dim=-1
+            )
+
+        ground_idx = self._ground_link_idx_global
+        floor_collision = valid_mask & (
+            ((link_a == ground_idx) & link_b_in_set) | ((link_b == ground_idx) & link_a_in_set)
+        )
+        return floor_collision.any(dim=-1)
 
     def get_truncated(self) -> torch.Tensor:
         if self._eval_mode:
@@ -473,7 +555,7 @@ class LeggedRobotEnv(BaseEnv):
         return reward_total, reward_dict
 
     def _render_headless(self) -> None:
-        if self._rendering and len(self._rendered_images) < 1000:
+        if self._rendering:
             robot_pos = self._robot.base_pos[0]
             robot_pos[2] = 0.7
             self._floating_camera.set_pose(
@@ -481,16 +563,79 @@ class LeggedRobotEnv(BaseEnv):
                 lookat=robot_pos + self.camera_lookat,
             )
             rgb, _, _, _ = self._floating_camera.render()
-            self._rendered_images.append(rgb)
+            if rgb.dtype != np.uint8:
+                rgb = (rgb * 255).astype(np.uint8)
+            if self._gif_writer is not None:
+                self._gif_writer.append_data(rgb)
+            if self._video_writer is not None:
+                self._video_writer.append_data(rgb)
+            if self._gif_writer is None and self._video_writer is None:
+                self._rendered_images.append(rgb)
+            self._rendered_frame_count += 1
 
-    def start_rendering(self) -> None:
+    def start_rendering(
+        self,
+        save_gif: bool = False,
+        gif_path: str = ".",
+        save_video: bool = False,
+        video_path: str | None = None,
+        gif_duration: int = 20,
+        video_fps: int = 50,
+    ) -> None:
         self._rendering = True
         self._rendered_images = []
+        self._rendered_frame_count = 0
+        self._close_render_writers()
 
-    def stop_rendering(self, save_gif: bool = True, gif_path: str = ".") -> None:
+        if save_gif:
+            gif_parent = Path(gif_path).parent
+            gif_parent.mkdir(parents=True, exist_ok=True)
+            self._gif_path = gif_path
+            self._gif_writer = imageio.get_writer(
+                gif_path,
+                mode="I",
+                duration=gif_duration / 1000.0,
+                loop=0,
+            )
+        else:
+            self._gif_path = None
+
+        if save_video:
+            if video_path is None:
+                video_path = gif_path.rsplit(".", 1)[0] + ".mp4"
+            video_parent = Path(video_path).parent
+            video_parent.mkdir(parents=True, exist_ok=True)
+            self._video_path = video_path
+            self._video_writer = imageio.get_writer(video_path, fps=video_fps)
+        else:
+            self._video_path = None
+
+    def stop_rendering(
+        self,
+        save_gif: bool = True,
+        gif_path: str = ".",
+        save_video: bool = True,
+        video_path: str | None = None,
+    ) -> None:
         self._rendering = False
-        if save_gif and self._rendered_images:
-            self.save_gif(gif_path)
+        if self._gif_writer is not None or self._video_writer is not None:
+            self._close_render_writers()
+            if self._rendered_frame_count == 0:
+                print("No rendered images to save.")
+            else:
+                if self._gif_path is not None:
+                    print(f"GIF saved to: {self._gif_path}")
+                if self._video_path is not None:
+                    print(f"Video saved to: {self._video_path}")
+            return
+
+        if self._rendered_images:
+            if save_gif:
+                self.save_gif(gif_path)
+            if save_video:
+                if video_path is None:
+                    video_path = gif_path.rsplit(".", 1)[0] + ".mp4"
+                self.save_video(video_path)
 
     def save_gif(self, gif_path: str, duration: int = 20) -> None:
         """
@@ -526,6 +671,34 @@ class LeggedRobotEnv(BaseEnv):
             print(f"GIF saved to: {gif_path}")
         else:
             print("No images to save as GIF.")
+
+    def save_video(self, video_path: str, fps: int = 50) -> None:
+        """Save the rendered images as an MP4 video.
+
+        Args:
+            video_path: Path to save the MP4 video.
+            fps: Frames per second (default: 50).
+        """
+        if not self._rendered_images:
+            print("No rendered images to save.")
+            return
+
+        frames = []
+        for img_array in self._rendered_images:
+            if img_array.dtype != np.uint8:
+                img_array = (img_array * 255).astype(np.uint8)
+            frames.append(img_array)
+
+        imageio.mimwrite(video_path, frames, fps=fps)
+        print(f"Video saved to: {video_path}")
+
+    def _close_render_writers(self) -> None:
+        if self._gif_writer is not None:
+            self._gif_writer.close()
+            self._gif_writer = None
+        if self._video_writer is not None:
+            self._video_writer.close()
+            self._video_writer = None
 
     def _random_push(self, envs_idx: torch.Tensor) -> None:
         if envs_idx.numel() > 0:

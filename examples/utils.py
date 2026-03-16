@@ -3,7 +3,22 @@ from typing import Any
 
 import matplotlib.ticker as ticker
 import numpy as np
+import torch
 import yaml
+
+FLOOR_COLLISION_ALLOWED_HEIGHT_MARGIN_M = 0.2
+
+
+def compute_terminate_after_floor_collision_mask(
+    link_pos: torch.Tensor,
+    allowed_height_margin_m: float = FLOOR_COLLISION_ALLOWED_HEIGHT_MARGIN_M,
+) -> torch.Tensor:
+    """Mark links that should terminate on floor contact for a single frame."""
+    if link_pos.ndim != 2 or link_pos.shape[-1] != 3:
+        raise ValueError("link_pos must have shape [num_links, 3].")
+
+    link_height = link_pos[:, 2]
+    return link_height > (link_height.min() + allowed_height_margin_m)
 
 
 def cross_correlation(

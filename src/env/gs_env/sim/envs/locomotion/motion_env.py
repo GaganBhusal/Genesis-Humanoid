@@ -156,6 +156,7 @@ class MotionEnv(LeggedRobotEnv):
             motion_file=self._args.motion_file,
             device=self._device,
             tracking_link_names=self._args.tracking_link_names,
+            robot_link_names=self._robot.link_names,
         )
         if self._args.motion_file is not None:
             self.ref_joint_idx_local = [
@@ -286,6 +287,9 @@ class MotionEnv(LeggedRobotEnv):
         )
         self.ref_tracking_link_ang_vel_global = torch.zeros(
             self.num_envs, len(self.tracking_link_idx_local), 3, device=self._device
+        )
+        self.ref_terminate_after_floor_collision_mask = torch.zeros(
+            self.num_envs, self._robot.n_links, device=self._device, dtype=torch.bool
         )
         self.ref_foot_contact = torch.zeros(
             self.num_envs, len(self._robot.foot_links_idx), device=self._device
@@ -464,7 +468,11 @@ class MotionEnv(LeggedRobotEnv):
             > 1.0,
             dim=-1,
         )
+        floor_collision_mask = self._check_floor_collision(
+            self._get_ref_terminate_after_floor_collision_link_idx_global()
+        )
         reset_buf |= contact_force_mask
+        reset_buf |= floor_collision_mask
 
         # Only enable error-based termination after a certain motion time, if specified
         terminate_by_error = self.motion_times > self._args.no_terminate_before_motion_time
@@ -501,10 +509,24 @@ class MotionEnv(LeggedRobotEnv):
         termination_dict["motion_end"] = motion_end_buf.clone()
         # termination_dict["terminate_by_error"] = terminate_by_error.clone()
         termination_dict["contact_force"] = contact_force_mask.clone()
+        termination_dict["floor_collision"] = floor_collision_mask.clone()
         # termination_dict["any"] = reset_buf.clone()
         self._extra_info["termination"] = termination_dict
 
         return reset_buf
+
+    def _get_ref_terminate_after_floor_collision_link_idx_global(self) -> torch.Tensor:
+        expanded_global_idx = self._robot_link_idx_global.unsqueeze(0).expand(self.num_envs, -1)
+        dynamic_idx = torch.where(
+            self.ref_terminate_after_floor_collision_mask,
+            expanded_global_idx,
+            torch.full_like(expanded_global_idx, -1),
+        )
+        if self._terminate_floor_link_idx_global.numel() == 0:
+            return dynamic_idx
+
+        static_idx = self._terminate_floor_link_idx_global.unsqueeze(0).expand(self.num_envs, -1)
+        return torch.cat([dynamic_idx, static_idx], dim=-1)
 
     def _compute_error(self) -> dict[str, float]:
         base_pos_error = torch.norm(self.base_pos - self.ref_base_pos, dim=-1)
@@ -733,6 +755,7 @@ class MotionEnv(LeggedRobotEnv):
             link_lin_vel_local,
             link_ang_vel_global,
             link_ang_vel_local,
+            terminate_after_floor_collision_mask,
             foot_contact,
             foot_contact_weighted,
         ) = self._motion_lib.get_ref_motion_frame(motion_ids, motion_times)
@@ -784,6 +807,9 @@ class MotionEnv(LeggedRobotEnv):
         self.ref_tracking_link_quat_global[envs_idx] = link_quat_global
         self.ref_tracking_link_lin_vel_global[envs_idx] = link_lin_vel_global
         self.ref_tracking_link_ang_vel_global[envs_idx] = link_ang_vel_global
+        self.ref_terminate_after_floor_collision_mask[envs_idx] = (
+            terminate_after_floor_collision_mask
+        )
         self.ref_foot_contact[envs_idx] = foot_contact
         self.ref_foot_contact_weighted[envs_idx] = foot_contact_weighted
 

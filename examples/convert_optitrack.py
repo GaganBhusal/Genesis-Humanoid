@@ -11,6 +11,7 @@ from gs_env.common.utils.math_utils import quat_apply, quat_from_angle_axis, qua
 from gs_env.common.utils.motion_utils import G1Retargeter
 from gs_env.sim.envs.config.registry import EnvArgsRegistry
 from gs_env.sim.envs.config.schema import MotionEnvArgs
+from utils import compute_terminate_after_floor_collision_mask
 
 
 def optitrack_to_motion_data(
@@ -38,9 +39,9 @@ def optitrack_to_motion_data(
     """
 
     dof_names = env.dof_names
+    all_robot_link_names = [link.name for link in env.robot.robot.links]
 
     optitrack_link_names = list(optitrack_data["link_names"])
-    link_names = env.args.tracking_link_names
     link_name_to_idx = {
         "left_ankle_roll_link": optitrack_link_names.index("LeftFoot"),
         "right_ankle_roll_link": optitrack_link_names.index("RightFoot"),
@@ -52,7 +53,7 @@ def optitrack_to_motion_data(
 
     motion_data = {}
     motion_data["fps"] = optitrack_data["fps"]
-    motion_data["link_names"] = link_names
+    motion_data["link_names"] = all_robot_link_names
     motion_data["dof_names"] = dof_names
 
     # Extract data from optitrack pickle
@@ -69,6 +70,7 @@ def optitrack_to_motion_data(
     dof_pos_list = []
     link_pos_list = []
     link_quat_list = []
+    floor_terminate_mask_list = []
     foot_contact_list = []
 
     def _format_timer_stats(stats: dict[str, dict[str, float | int]]) -> str:
@@ -178,6 +180,7 @@ def optitrack_to_motion_data(
                 quat=base_quat.unsqueeze(0),
                 dof_pos=dof_pos.unsqueeze(0),
             )
+            env.update_buffers()
             quat_yaw = quat_from_angle_axis(
                 quat_to_euler(base_quat)[2], torch.tensor([0.0, 0.0, 1.0])
             )
@@ -186,8 +189,6 @@ def optitrack_to_motion_data(
             link_quat = quat_mul(quat_yaw, retargeted["link_quat_local"].clone())
             # link_pos = retargeted["link_pos_local"]
             # link_quat = retargeted["link_quat_local"]
-            base_pos = link_pos[link_name_to_idx["pelvis"], :]
-            base_quat = link_quat[link_name_to_idx["pelvis"], :]
             if show_viewer:
                 for link_name in env.scene.objects.keys():  # type: ignore
                     if link_name in link_name_to_idx:
@@ -202,11 +203,14 @@ def optitrack_to_motion_data(
             pos_list.append(retargeted["base_pos"].clone())
             quat_list.append(retargeted["base_quat"].clone())
             dof_pos_list.append(dof_pos.clone())
-            link_pos_list.append(link_pos.clone())
-            link_quat_list.append(link_quat.clone())
+            link_pos_list.append(env.link_positions[0].clone())
+            link_quat_list.append(env.link_quaternions[0].clone())
+            floor_terminate_mask_list.append(
+                compute_terminate_after_floor_collision_mask(env.link_positions[0])
+            )
             foot_contact_list.append(frame_foot_contact.clone())
 
-            foot_pos = link_pos[[0, 1], :]
+            foot_pos = env.link_positions[0, foot_links_idx, :]
             if show_viewer:
                 if time.time() - last_step_time > 1 / 30:
                     env.scene.scene.clear_debug_objects()
@@ -251,6 +255,10 @@ def optitrack_to_motion_data(
         motion_data["dof_pos"] = torch.stack(dof_pos_list).numpy()
         motion_data["link_pos"] = torch.stack(link_pos_list).numpy()
         motion_data["link_quat"] = torch.stack(link_quat_list).numpy()
+        motion_data["terminate_after_floor_collision_link_names"] = all_robot_link_names
+        motion_data["terminate_after_floor_collision_mask"] = torch.stack(
+            floor_terminate_mask_list
+        ).numpy()
         motion_data["foot_contact"] = torch.stack(foot_contact_list).numpy()
 
         return motion_data
