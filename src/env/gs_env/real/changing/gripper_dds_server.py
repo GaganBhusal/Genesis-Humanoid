@@ -70,8 +70,6 @@ class GripperClient:
             acceleration=init_acceleration,
             deceleration=init_deceleration,
         )
-        self._spining_thread: threading.Thread | None = None
-        self._spining_stop = threading.Event()
 
     def move(
         self,
