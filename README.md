@@ -86,7 +86,7 @@ pre-commit run --all-files
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and setup the repository
-git clone git@github.com:UMass-Embodied-AGI/Genesis-Humanoid.git
+git clone --recurse-submodules git@github.com:UMass-Embodied-AGI/Genesis-Humanoid.git
 cd Genesis-Humanoid
 ```
 

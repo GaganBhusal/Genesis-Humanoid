@@ -1,0 +1,9 @@
+[submodule "src/env/gs_env/real/optitrack"]
+	path = src/env/gs_env/real/optitrack
+	url = git@github.com:OwenOwl/NatNetStreamer.git
+[submodule "src/env/gs_env/real/steamvr"]
+	path = src/env/gs_env/real/steamvr
+	url = git@github.com:OwenOwl/SteamVRStreamer.git
+[submodule "src/env/gs_env/real/xr"]
+	path = src/env/gs_env/real/xr
+	url = git@github.com:OwenOwl/XRStreamer.git
