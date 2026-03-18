@@ -457,11 +457,14 @@ class LeggedRobotEnv(BaseEnv):
         self.torque *= 0
 
         # Apply actions and simulate physics
-        for _ in range(self.decimation):
+        for i in range(self.decimation):
             self._pre_step()
 
             self._robot.apply_action(action=exec_action)
-            self._scene.scene.step()
+            if i == 0 and self._show_viewer:
+                self._scene.scene.step(refresh_visualizer=True, update_visualizer=True)
+            else:
+                self._scene.scene.step(refresh_visualizer=False, update_visualizer=False)
             self.torque = torch.max(self.torque, torch.abs(self._robot.torque))
 
         self.update_buffers()
