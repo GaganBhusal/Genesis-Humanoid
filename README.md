@@ -6,6 +6,31 @@
   <img src="media/teaser.gif" width="320">
 </p>
 
+## Outline
+
+- [Features](#features)
+- [Code Structure](#code-structure)
+- [Code Style](#code-style)
+- [Installation](#installation)
+  - [Install Dependencies](#1-install-dependencies)
+  - [Install the `gs-env` package](#2-install-the-gs-env-package)
+  - [Activate the environment](#3-activate-the-environment)
+  - [Setup real-world environment](#4-setup-real-world-environment)
+- [Usage](#usage)
+  - [Process humanoid motions](#process-humanoid-motions)
+  - [Retarget human motion](#retarget-human-motion)
+  - [Run RL training](#run-rl-training)
+  - [Run BC distillation](#run-bc-distillation)
+  - [RL finetune / resume training](#rl-finetune--resume-training)
+  - [Evaluate trained policy](#evaluate-trained-policy)
+  - [Deploy to a real robot](#deploy-to-a-real-robot)
+  - [Teleoperate the robot](#teleoperate-the-robot)
+- [Unified Motion Dataset](#unified-motion-dataset)
+- [Citation](#citation)
+- [Acknowledgement](#acknowledgement)
+
+## Features
+
 Genesis Humanoid shares the modular design with [GenesisPlayground](https://github.com/yun-long/GenesisPlayground), featuring with:
 - **macOS compatibility** provides an interactive viewer on your MacBook.
 
@@ -115,7 +140,7 @@ Please refer to READMEs in each folder under `src/env/gs_env/real`.
 
 A wide range of example usages of Genesis Humanoid can be found in the `/examples` and `/deploy` directories.
 
-### Process existing motions
+### Process humanoid motions
 
 ```bash
 # LAFAN1 (Optional but recommended)
@@ -123,7 +148,10 @@ python examples/convert_lafan.py
 
 # HuB (Optional)
 python examples/convert_hub.py
+```
 
+### Retarget human motion
+```bash
 # Recorded MoCap motion
 python examples/convert_optitrack.py
 
@@ -132,6 +160,9 @@ python examples/convert_optitrack.py
 # Download AMASS dataset to assets/AMASS
 python examples/convert_amass.py
 ```
+
+For motion retargeting, Genesis Humanoid integrates Cartesian-spacing mapping from [ExtremControl](https://github.com/yourname/ExtremControl) and cleans up [GMR](https://github.com/YanjieZe/GMR) for joint-space retageting.
+Check [Teleoperate](#teleoperate-the-robot) for real-time retargeting from OptiTrack or SteamVR.
 
 ### Run RL training
 
