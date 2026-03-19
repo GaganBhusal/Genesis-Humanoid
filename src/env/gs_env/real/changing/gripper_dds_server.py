@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import signal
 import threading
 import time
 from dataclasses import dataclass
@@ -26,7 +25,11 @@ from cyclonedds.pub import DataWriter
 from cyclonedds.sub import DataReader
 from cyclonedds.topic import Topic
 from cyclonedds.util import duration
-from utils.changingtek_p_rtu_Servo import MotorController
+
+try:
+    from .utils.changingtek_p_rtu_Servo import MotorController
+except ImportError:
+    from utils.changingtek_p_rtu_Servo import MotorController  # type: ignore
 
 _dir = os.path.dirname(os.path.abspath(__file__))
 os.environ.setdefault("CYCLONEDDS_URI", f"file://{_dir}/cyclonedds.xml")
@@ -318,12 +321,6 @@ def main() -> int:
 
     shutdown = threading.Event()
 
-    def on_signal(*_args: object) -> None:
-        server.stop()
-        shutdown.set()
-
-    signal.signal(signal.SIGINT, on_signal)
-    signal.signal(signal.SIGTERM, on_signal)
     try:
         while not shutdown.is_set():
             shutdown.wait(timeout=1.0)

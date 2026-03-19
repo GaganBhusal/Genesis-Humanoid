@@ -11,10 +11,9 @@ Run (with gripper_dds_server running or standalone to test DDS):
 from __future__ import annotations
 
 import argparse
-import signal
 import time
 
-from gripper import Gripper
+from gs_env.real.changing.gripper import Gripper
 
 COMMAND_FLIP_INTERVAL = 1.0  # print state and flip command once a second
 
@@ -35,13 +34,6 @@ def main() -> int:
     next_cmd = time.time() + COMMAND_FLIP_INTERVAL
     toggle = False
     stop = False
-
-    def on_signal(*_args: object) -> None:
-        nonlocal stop
-        stop = True
-
-    signal.signal(signal.SIGINT, on_signal)
-    signal.signal(signal.SIGTERM, on_signal)
 
     print(f"Printing state and flipping command every {COMMAND_FLIP_INTERVAL}s (Ctrl+C to stop)")
     while not stop:

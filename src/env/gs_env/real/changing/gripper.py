@@ -14,7 +14,8 @@ from cyclonedds.pub import DataWriter
 from cyclonedds.sub import DataReader
 from cyclonedds.topic import Topic
 from cyclonedds.util import duration
-from gripper_dds_server import (
+
+from .gripper_dds_server import (
     TOPIC_COMMAND,
     TOPIC_STATE,
     GripperClosureState,
