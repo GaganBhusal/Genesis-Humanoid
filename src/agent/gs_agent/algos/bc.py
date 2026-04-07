@@ -35,7 +35,8 @@ class BC(BaseAlgo):
         self._action_dim = self.env.action_dim
         #
         self._num_envs = self.env.num_envs
-        self._num_steps = cfg.max_buffer_size
+        self._num_steps = cfg.rollout_length
+        self._max_buffer_size = cfg.max_buffer_size
         #
 
         self.current_iter = 0
@@ -123,7 +124,7 @@ class BC(BaseAlgo):
     def _build_rollouts(self) -> None:
         self._rollouts = BCBuffer(
             num_envs=self._num_envs,
-            max_steps=self._num_steps,
+            max_steps=self._max_buffer_size,
             obs_size=self._actor_obs_dim,  # TODO: add depth_shape and rgb_shape
             action_size=self._action_dim,
             device=self.device,

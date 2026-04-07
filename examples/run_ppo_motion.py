@@ -240,6 +240,20 @@ def evaluate_policy(
         jit_policy_path = deploy_dir / f"checkpoint_{num_ckpt}.pt"
         torch.jit.save(inference_policy, str(jit_policy_path))
         print(f"JIT-traced policy saved to: {jit_policy_path}")
+        try:
+            onnx_policy_path = deploy_dir / f"checkpoint_{num_ckpt}.onnx"
+            torch.onnx.export(
+                wrapped_policy,
+                (torch.ones_like(obs.reshape(1, -1)),),
+                onnx_policy_path,
+                export_params=True,
+                opset_version=11,
+                do_constant_folding=True,
+                dynamo=False,
+            )
+            print(f"ONNX policy saved to: {onnx_policy_path}")
+        except Exception as e:
+            print(f"Error saving ONNX policy: {e}")
 
         # Save env_args as YAML
         env_args_path = deploy_dir / "env_args.yaml"

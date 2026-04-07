@@ -3,11 +3,13 @@ import time
 from pathlib import Path
 
 import fire
+import numpy as np
 import torch
 from gs_env.common.utils.math_utils import (
     quat_apply,
     quat_diff,
     quat_from_angle_axis,
+    quat_from_euler,
     quat_mul,
     quat_to_rotation_6D,
 )
@@ -20,10 +22,60 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from deploy.utils import RedisClient
 from examples.utils import yaml_to_config  # type: ignore
 
+try:
+    import onnxruntime as ort
+
+    class OnnxPolicyWrapper:
+        """Minimal wrapper so ONNXRuntime policies mimic TorchScript call signature."""
+
+        def __init__(
+            self,
+            session: ort.InferenceSession,
+            input_name: str,
+            output_index: int = 0,
+            output_device: str = "cpu",
+        ) -> None:
+            self.session = session
+            self.input_name = input_name
+            self.output_index = output_index
+            self.output_device = torch.device(output_device)
+
+        def __call__(self, obs_tensor: torch.Tensor | np.ndarray) -> torch.Tensor:
+            if isinstance(obs_tensor, torch.Tensor):
+                target_device = obs_tensor.device
+                obs_np = obs_tensor.detach().to(dtype=torch.float32, device="cpu").numpy()
+            else:
+                target_device = self.output_device
+                obs_np = np.asarray(obs_tensor, dtype=np.float32)
+            outputs = self.session.run(None, {self.input_name: obs_np})
+            result = outputs[self.output_index]
+            if not isinstance(result, np.ndarray):
+                result = np.asarray(result, dtype=np.float32)
+            return torch.from_numpy(result.astype(np.float32, copy=False)).to(target_device)
+
+    def load_onnx_policy(policy_path: str, device: str) -> OnnxPolicyWrapper:
+        providers = []
+        available = ort.get_available_providers()
+        if device.startswith("cuda"):
+            if "CUDAExecutionProvider" in available:
+                providers.append("CUDAExecutionProvider")
+            else:
+                print(
+                    "CUDAExecutionProvider not available in onnxruntime; falling back to CPUExecutionProvider."
+                )
+        providers.append("CPUExecutionProvider")
+        session = ort.InferenceSession(policy_path, providers=providers)
+        input_name = session.get_inputs()[0].name
+        print(f"ONNX policy loaded from {policy_path} using providers: {session.get_providers()}")
+        return OnnxPolicyWrapper(session, input_name, output_device=device)
+
+except ImportError:
+    print("onnxruntime is not installed, ONNX policy inference will not be available")
+
 
 def load_checkpoint_and_env_args(
-    exp_name: str, num_ckpt: int | None = None, device: str = "cpu"
-) -> tuple[torch.jit.ScriptModule, MotionEnvArgs]:
+    exp_name: str, num_ckpt: int | None = None, device: str = "cpu", onnx: bool = False
+) -> tuple[OnnxPolicyWrapper | torch.jit.ScriptModule, MotionEnvArgs]:
     """Load JIT checkpoint and env_args from deploy/logs directory.
 
     Args:
@@ -47,22 +99,38 @@ def load_checkpoint_and_env_args(
     env_args = yaml_to_config(env_args_path, MotionEnvArgs)
 
     # Load checkpoint
-    if num_ckpt is not None:
-        ckpt_path = deploy_dir / f"checkpoint_{num_ckpt:04d}.pt"
-        if not ckpt_path.exists():
-            raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
-    else:
-        # Find latest checkpoint
-        ckpts = list(deploy_dir.glob("checkpoint_*.pt"))
-        if not ckpts:
-            raise FileNotFoundError(f"No checkpoints found in {deploy_dir}")
-        ckpt_path = max(ckpts, key=lambda p: int(p.stem.split("_")[-1]))
+    if not onnx:
+        if num_ckpt is not None:
+            ckpt_path = deploy_dir / f"checkpoint_{num_ckpt:04d}.pt"
+            if not ckpt_path.exists():
+                raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+        else:
+            # Find latest checkpoint
+            ckpts = list(deploy_dir.glob("checkpoint_*.pt"))
+            if not ckpts:
+                raise FileNotFoundError(f"No checkpoints found in {deploy_dir}")
+            ckpt_path = max(ckpts, key=lambda p: int(p.stem.split("_")[-1]))
 
-    print(f"Loading checkpoint from: {ckpt_path}")
-    # Load policy
-    policy = torch.jit.load(str(ckpt_path))
-    policy.to(device)
-    policy.eval()
+        print(f"Loading checkpoint from: {ckpt_path}")
+        # Load policy
+        policy = torch.jit.load(str(ckpt_path))
+        policy.to(device)
+        policy.eval()
+    else:
+        if num_ckpt is not None:
+            ckpt_path = deploy_dir / f"checkpoint_{num_ckpt:04d}.onnx"
+            if not ckpt_path.exists():
+                raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+        else:
+            # Find latest checkpoint
+            ckpts = list(deploy_dir.glob("checkpoint_*.onnx"))
+            if not ckpts:
+                raise FileNotFoundError(f"No checkpoints found in {deploy_dir}")
+            ckpt_path = max(ckpts, key=lambda p: int(p.stem.split("_")[-1]))
+
+        if not ckpt_path.exists():
+            raise FileNotFoundError(f"ONNX checkpoint not found: {ckpt_path}")
+        policy = load_onnx_policy(str(ckpt_path), device)
 
     return policy, env_args
 
@@ -78,6 +146,7 @@ def main(
     redis_url: str = "redis://localhost:6379/0",
     redis_key: str = "motion:ref:latest",
     rate_limit: float = 100.0,
+    onnx: bool = False,
 ) -> None:
     """Run BC motion policy on either simulation or real robot.
 
@@ -101,7 +170,7 @@ def main(
         env_args = EnvArgsRegistry["g1_motion"]
     else:
         # Load checkpoint and env_args
-        policy, env_args = load_checkpoint_and_env_args(exp_name, num_ckpt, device)
+        policy, env_args = load_checkpoint_and_env_args(exp_name, num_ckpt, device, onnx)
 
     tracking_link_names = getattr(env_args, "tracking_link_names", [])
     num_tracking_links = len(tracking_link_names)
@@ -128,10 +197,10 @@ def main(
         env.eval()
         env.reset()
 
-        # base_euler = torch.tensor([0.0, 0.0, 3.14], device=env.device)
-        # base_quat = quat_from_euler(base_euler)
-        # env.robot.set_state(quat=base_quat)
-        # env.update_buffers()
+        base_euler = torch.tensor([0.0, 0.0, 1.57], device=env.device)
+        base_quat = quat_from_euler(base_euler)
+        env.robot.set_state(quat=base_quat)
+        env.update_buffers()
 
     else:
         if view:
@@ -254,7 +323,7 @@ def main(
         motion_obs_elements = list(getattr(env_args, "observed_steps", {}).keys())
 
         redis_client.update()
-        # redis_client.update_quat(env.base_quat)
+        redis_client.update_quat(env.base_quat)
 
         obs_history = None
 
@@ -343,6 +412,8 @@ def main(
                 terminated = env.get_terminated()  # type: ignore
                 if terminated[0]:
                     env.reset_idx(torch.IntTensor([0]))  # type: ignore
+                    env.update_buffers()
+                    redis_client.update_quat(env.base_quat)
                 ref_quat_yaw = quat_from_angle_axis(
                     redis_client.ref_base_euler[:, 2],
                     torch.tensor([0, 0, 1], device=env.device, dtype=torch.float),

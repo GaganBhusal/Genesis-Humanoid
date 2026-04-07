@@ -208,7 +208,7 @@ def amass_to_motion_data(
 
 def recursive_convert_amass(
     amass_path: Path,
-    raw_path: Path,
+    raw_path: Path | None,
     retargeted_path: Path,
     env: Any,
     body_models: Any,
@@ -223,31 +223,41 @@ def recursive_convert_amass(
 
     print(f"Converting {amass_path} to {raw_path} and {retargeted_path}")
 
+    if amass_path.is_file():
+        npz_files = [amass_path]
+        print("Read single AMASS file, not storing in dataset")
+        raw_motion_data, retargeted_motion_data = amass_to_motion_data(
+            env, body_models, amass_path, show_viewer
+        )
+        return None
+
     npz_files = list(amass_path.glob("*.npz"))
     for npz_file in npz_files:
         motion_name = npz_file.name.replace(".npz", "")
         if any(keyword in str(npz_file.absolute()).lower() for keyword in EXCLUDE_KEY_WORDS):
             continue
-        raw_file = raw_path / f"{motion_name}.pkl"
+        if raw_path is not None:
+            raw_file = raw_path / f"{motion_name}.pkl"
         retargeted_file = retargeted_path / f"{motion_name}.pkl"
-        if not raw_file.exists() or not retargeted_file.exists():
+        if not retargeted_file.exists():
             raw_motion_data, retargeted_motion_data = amass_to_motion_data(
                 env, body_models, npz_file, show_viewer
             )
-            raw_path.mkdir(parents=True, exist_ok=True)
+            if raw_path is not None:
+                raw_path.mkdir(parents=True, exist_ok=True)
+                with open(raw_file, "wb") as f:
+                    pickle.dump(raw_motion_data, f)
             retargeted_path.mkdir(parents=True, exist_ok=True)
-            with open(raw_file, "wb") as f:
-                pickle.dump(raw_motion_data, f)
             with open(retargeted_file, "wb") as f:
                 pickle.dump(retargeted_motion_data, f)
-            dataset_yaml["motions"].append({"file": f"{motion_name}.pkl", "weight": 1.0})
+                dataset_yaml["motions"].append({"file": f"{motion_name}.pkl", "weight": 1.0})
 
     for subfolder in amass_path.iterdir():
         if subfolder.is_dir() and not subfolder.name.startswith("."):
             sub_folder_name = subfolder.relative_to(amass_path)
             sub_folder_result = recursive_convert_amass(
                 subfolder,
-                raw_path / sub_folder_name,
+                raw_path / sub_folder_name if raw_path is not None else None,
                 retargeted_path / sub_folder_name,
                 env,
                 body_models,
@@ -259,15 +269,16 @@ def recursive_convert_amass(
                 )
 
     if len(dataset_yaml["motions"]):
-        raw_path.mkdir(parents=True, exist_ok=True)
-        retargeted_path.mkdir(parents=True, exist_ok=True)
-
         yaml_file = f"{amass_path.name}.yaml"
-        raw_dataset_yaml = dataset_yaml.copy()
-        raw_dataset_yaml["root_path"] = str(raw_path)
-        with open(raw_path / yaml_file, "w") as f:
-            yaml.dump(raw_dataset_yaml, f)
 
+        if raw_path is not None:
+            raw_path.mkdir(parents=True, exist_ok=True)
+            raw_dataset_yaml = dataset_yaml.copy()
+            raw_dataset_yaml["root_path"] = str(raw_path)
+            with open(raw_path / yaml_file, "w") as f:
+                yaml.dump(raw_dataset_yaml, f)
+
+        retargeted_path.mkdir(parents=True, exist_ok=True)
         retargeted_dataset_yaml = dataset_yaml.copy()
         retargeted_dataset_yaml["root_path"] = str(retargeted_path)
         with open(retargeted_path / yaml_file, "w") as f:
@@ -317,7 +328,7 @@ if __name__ == "__main__":
 
     recursive_convert_amass(
         Path(AMASS_dir),
-        Path("./assets/motion/AMASS_raw"),
+        None,
         Path("./assets/motion/AMASS"),
         env,
         body_models,

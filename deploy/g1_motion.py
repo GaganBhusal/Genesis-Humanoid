@@ -195,6 +195,7 @@ def main(
                 ref_link_lin_vel_local,
                 ref_link_ang_vel,
                 ref_link_ang_vel_local,
+                _,
                 ref_foot_contact,
                 ref_foot_contact_weighted,
             ) = motion_lib.get_ref_motion_frame(motion_ids=motion_id_t, motion_times=motion_time_t)

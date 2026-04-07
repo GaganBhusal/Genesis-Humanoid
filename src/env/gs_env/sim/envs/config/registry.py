@@ -136,31 +136,33 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
         ### Motion Tracking ###
         "DofPosReward": 3.0,
         "DofVelReward": 0.02,
+        "BaseHeightReward": 100.0,
         "BaseLinVelReward": 20.0,
         "BaseQuatReward": 20.0,
         "BaseAngVelReward": 0.2,
-        "TrackingLinkPosGlobalReward": 30.0,
+        "TrackingLinkPosGlobalReward": 20.0,
         "TrackingLinkPosLocalReward": 20.0,
         "TrackingLinkQuatReward": 1.0,
         "TrackingLinkLinVelReward": 1.0,
         "FootContactReward": 3.0,
-        "FootContactPenalty": 10.0,
+        "FootContactPenalty": 5.0,
         ### Regularization ###
         "TorquePenalty": 0.0001,
         "DofVelPenalty": 0.02,
         "ActionRatePenalty": 0.2,
         "AnkleTorquePenalty": 0.003,
-        "BodyAngVelXYPenalty": 0.5,
+        "BodyAngVelXYPenalty": 1.0,
         "BodyRollPenalty": 20.0,
+        "BaseRollPenalty": 20.0,
         "WaistVelPenalty": 0.2,
-        "WaistRollPenalty": 20.0,
-        "HipRollPenalty": 5.0,
-        "HipYawPenalty": 5.0,
-        "G1FeetSlidePenalty": 3.0,
-        "MotionFeetAirTimePenalty": 100.0,
-        "MotionStandStillFeetContactPenalty": 30.0,
-        "FootOrientationPenalty": 30.0,
-        "FeetContactForceLimitPenalty": 2.0,
+        "WaistRollPenalty": 10.0,
+        # "HipRollPenalty": 5.0,
+        # "HipYawPenalty": 5.0,
+        "G1FeetSlidePenalty": 5.0,
+        "MotionFeetAirTimePenalty": 200.0,
+        "MotionStandStillFeetContactPenalty": 50.0,
+        "FootOrientationPenalty": 50.0,
+        "FeetContactForceLimitPenalty": 4.0,
     },
     img_resolution=(480, 270),
     action_latency=1,
@@ -194,7 +196,7 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
         "diff_tracking_link_lin_vel_local_yaw",
         "diff_tracking_link_ang_vel_local_yaw",
         # Reference
-        "motion_obs",
+        "motion_obs_history",
         # Privileged
         "dr_obs",
         "base_lin_vel_local",
@@ -226,7 +228,7 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
         "diff_tracking_link_lin_vel_local_yaw",
         "diff_tracking_link_ang_vel_local_yaw",
         # Reference
-        "motion_obs",
+        "motion_obs_history",
         # Privileged
         "dr_obs",
         "base_lin_vel_local",
@@ -238,6 +240,10 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
     terminate_after_collision_on=[
         "pelvis",
         "torso_link",
+        "left_hip_yaw_link",
+        "right_hip_yaw_link",
+        "left_knee_link",
+        "right_knee_link",
         "left_shoulder_yaw_link",
         "right_shoulder_yaw_link",
         "left_elbow_link",
@@ -252,7 +258,9 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
         "pelvis",
     ],
     dof_weights={
-        "hip": 1.0,
+        "hip_roll": 1.0,
+        "hip_pitch": 0.6,
+        "hip_yaw": 1.0,
         "knee": 0.6,
         "ankle": 0.3,
         "waist": 2.0,
@@ -273,7 +281,7 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
         "pelvis": 0.0,
     },
     link_quat_weights={
-        "ankle": 0.5,
+        "ankle": 0.0,
         "wrist": 2.0,
         "torso": 5.0,
     },
@@ -282,7 +290,7 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
     no_terminate_after_random_push_time=2.0,
     # [initial_threshold, [min_threshold, max_threshold]]
     terminate_after_error={
-        "base_pos_error": [1.0, [0.1, 1.0]],
+        "base_pos_error": [2.0, [0.1, 2.0]],
         "base_quat_error": [2.0, [0.1, 2.0]],
     },
     adaptive_termination_ratio=None,
@@ -317,9 +325,11 @@ EnvArgsRegistry["g1_motion_teacher"] = MotionEnvArgs(
         "link_ang_vel": [
             1,
         ],
-        "foot_contact": [1, 2, 3, 4, 6, 8, 12, 16, 24, 32],
+        "foot_contact": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 20, 24, 28, 32],
     },
     motion_file="assets/motion/evaluate.pkl",
+    relative_motion_obs=False,
+    motion_obs_history_len=1,
 )
 
 
@@ -335,29 +345,34 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
         ### Motion Tracking ###
         "DofPosReward": 1.0,
         "DofVelReward": 0.01,
+        "BaseHeightReward": 100.0,
         "BaseLinVelReward": 20.0,
         "BaseQuatReward": 20.0,
         "BaseAngVelReward": 0.2,
-        "TrackingLinkPosGlobalReward": 30.0,
-        "TrackingLinkPosLocalReward": 30.0,
+        "TrackingLinkPosGlobalReward": 20.0,
+        "TrackingLinkPosLocalReward": 20.0,
         "TrackingLinkQuatReward": 1.0,
         "TrackingLinkLinVelReward": 1.0,
-        "FootContactReward": 8.0,
+        "FootContactReward": 2.0,
         "FootContactPenalty": 5.0,
         ### Regularization ###
         "TorquePenalty": 0.0001,
         "DofVelPenalty": 0.02,
         "ActionRatePenalty": 0.2,
         "AnkleTorquePenalty": 0.002,
-        "BodyAngVelXYPenalty": 0.3,
+        "BodyAngVelXYPenalty": 1.0,
         "BodyRollPenalty": 20.0,
+        "BaseRollPenalty": 20.0,
         "WaistVelPenalty": 0.2,
-        "WaistRollPenalty": 20.0,
+        "WaistRollPenalty": 10.0,
+        # "HipRollPenalty": 5.0,
+        "HipYawPenalty": 5.0,
+        "G1FeetSlidePenalty": 5.0,
         "MotionFeetAirTimePenalty": 200.0,
         "MotionStandStillFeetContactPenalty": 50.0,
-        "MotionStandStillAnkleVelPenalty": 10.0,
-        "FootOrientationPenalty": 30.0,
-        "FeetContactForceLimitPenalty": 2.0,
+        # "MotionStandStillAnkleVelPenalty": 10.0,
+        "FootOrientationPenalty": 100.0,
+        "FeetContactForceLimitPenalty": 5.0,
     },
     img_resolution=(480, 270),
     action_latency=1,
@@ -384,7 +399,7 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
         "diff_tracking_link_rotation_6D",
         "projected_gravity",
         # Reference
-        "motion_obs",
+        "motion_obs_history",
     ],
     critic_obs_terms=[
         "last_action",
@@ -409,7 +424,7 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
         "diff_tracking_link_lin_vel_local_yaw",
         "diff_tracking_link_ang_vel_local_yaw",
         # Reference
-        "motion_obs",
+        "motion_obs_history",
         # Privileged
         "dr_obs",
         "base_lin_vel_local",
@@ -421,6 +436,10 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
     terminate_after_collision_on=[
         "pelvis",
         "torso_link",
+        "left_hip_yaw_link",
+        "right_hip_yaw_link",
+        "left_knee_link",
+        "right_knee_link",
         "left_shoulder_yaw_link",
         "right_shoulder_yaw_link",
         "left_elbow_link",
@@ -435,7 +454,9 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
         "pelvis",
     ],
     dof_weights={
-        "hip": 1.0,
+        "hip_roll": 1.0,
+        "hip_pitch": 0.6,
+        "hip_yaw": 1.0,
         "knee": 0.6,
         "ankle": 0.3,
         "waist": 2.0,
@@ -456,7 +477,7 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
         "pelvis": 0.0,
     },
     link_quat_weights={
-        "ankle": 0.5,
+        "ankle": 0.0,
         "wrist": 2.0,
         "torso": 5.0,
     },
@@ -465,8 +486,8 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
     no_terminate_after_random_push_time=2.0,
     # [initial_threshold, [min_threshold, max_threshold]]
     terminate_after_error={
-        "base_pos_error": [1.0, [0.1, 1.0]],
-        "base_quat_error": [1.0, [0.1, 1.0]],
+        "base_pos_error": [2.0, [0.1, 1.0]],
+        "base_quat_error": [2.0, [0.1, 1.0]],
     },
     adaptive_termination_ratio=None,
     deviation_thresholds={
@@ -498,6 +519,8 @@ EnvArgsRegistry["g1_motion"] = MotionEnvArgs(
         ],
     },
     motion_file="assets/motion/evaluate.pkl",
+    relative_motion_obs=False,
+    motion_obs_history_len=1,
 )
 
 

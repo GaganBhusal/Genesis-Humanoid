@@ -72,6 +72,7 @@ class PPO(BaseAlgo):
         self._actor = GaussianPolicy(
             policy_backbone=policy_backbone,
             action_dim=self._action_dim,
+            init_std=self.cfg.init_std,
         ).to(self.device)
         self._actor_optimizer = torch.optim.Adam(self._actor.parameters(), lr=self._current_lr)
 

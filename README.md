@@ -25,6 +25,14 @@
 - [Citation](#citation)
 - [Acknowledgement](#acknowledgement)
 
+## Supported Hardware
+
+- [OptiTrack Mocap](https://optitrack.com/) `src/env/gs_env/real/optitrack`
+- [SteamVR](https://store.steampowered.com/app/250820/SteamVR/) `src/env/gs_env/real/steamvr`
+- [ChangingTek Gripper](https://en.changingtek.com/diandong/147) (CTAG2F90-D) `src/env/gs_env/real/changingtek`
+- [RealSense Camera](https://www.realsenseai.com/) (Async streaming by shared memory) `src/env/gs_env/real/realsense`
+- [WitMotion IMU](https://witmotion-sensor.com/products/mpu9250-high-precision-accelerometer-magnetometer-wt901c-for-pc-arduino-raspberry-pi) (WT901C) `src/env/gs_env/real/witimu`
+
 ## Features
 
 Genesis Humanoid shares the modular design with [GenesisPlayground](https://github.com/yun-long/GenesisPlayground), featuring with:

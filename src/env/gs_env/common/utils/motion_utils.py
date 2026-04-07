@@ -744,6 +744,15 @@ def build_motion_obs_from_dict(
     return torch.cat(motion_obs_list, dim=-1)
 
 
+def stack_motion_obs_from_dict(
+    future_obs: dict[str, torch.Tensor],
+    envs_idx: torch.Tensor,
+) -> torch.Tensor:
+    """Directly concatenate all future motion observations without any transformation."""
+    B = envs_idx.shape[0]
+    return torch.cat([v.reshape(B, -1) for v in future_obs.values()], dim=-1)
+
+
 def load_smplx_file(
     smplx_file: str, body_models: Any | None = None, smplx_body_model_path: str | None = None
 ) -> tuple[dict[str, Any], Any, Any, float]:
@@ -953,7 +962,7 @@ class GeneralMotionRetargeting:
                 print(f"Motor ID {i}: {motor_name}")
 
         # compute the scale ratio based on given human height and the assumption in the IK config
-        ratio = actual_human_height / ik_config["human_height_assumption"]
+        ratio = ik_config["human_height_assumption"] / actual_human_height
 
         # adjust the human scale table
         for key in ik_config["human_scale_table"].keys():

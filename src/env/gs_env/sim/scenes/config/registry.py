@@ -194,7 +194,7 @@ SceneArgsRegistry["flat_scene_default"] = FlatSceneArgs(
         camera_pos=(-0.6, 0.0, 0.7),
         camera_lookat=(0.2, 0.0, 0.1),
         camera_fov=50,
-        max_FPS=200,
+        max_FPS=50,
     ),
     normal=(0.0, 0.0, 1.0),
 )
@@ -222,59 +222,9 @@ SceneArgsRegistry["flat_scene_legged"] = FlatSceneArgs(
         camera_pos=(-2.0, 0.0, 0.6),
         camera_lookat=(0.0, 0.0, 0.6),
         camera_fov=50,
-        max_FPS=200,
+        max_FPS=50,
     ),
     normal=(0.0, 0.0, 1.0),
-)
-
-
-SceneArgsRegistry["custom_scene_desk"] = CustomSceneArgs(
-    scene_type="CustomScene",
-    show_viewer=False,
-    show_FPS=False,
-    center_envs_at_origin=True,
-    compile_kernels=True,
-    sim_options=SimArgsRegistry["legged"],
-    tool_options=ToolArgsRegistry["default"],
-    rigid_options=gs.options.RigidOptions(
-        enable_joint_limit=True,
-        enable_collision=True,
-        gravity=(0, 0, -9.8),
-        box_box_detection=True,
-    ),
-    mpm_options=MPMArgsRegistry["default"],
-    fem_options=FEMArgsRegistry["default"],
-    sf_options=SFArgsRegistry["default"],
-    vis_options=VisArgsRegistry["default"],
-    viewer_options=gs.options.ViewerOptions(
-        camera_pos=(-2.0, 0.0, 0.6),
-        camera_lookat=(0.0, 0.0, 0.6),
-        camera_fov=50,
-        max_FPS=200,
-    ),
-    normal=(0.0, 0.0, 1.0),
-    remove_ground=False,
-    objects=[
-        {
-            "type": "obj",
-            "path": "assets/scene/desk/desk.obj",
-            "scale": 1.0,
-            "position": (0.0, 0.0, 0.0),
-            "orientation": (90.0, 0.0, -90.0),
-            "fixed": True,
-            "visualization": True,
-            "collision": False,
-        },
-        # {
-        #     "type": "box",
-        #     "size": (0.4, 0.4, 0.4),
-        #     "position": (2.0, 0.0, 0.0),
-        #     "orientation": (0.0, 0.0, 0.0),
-        #     "fixed": True,
-        #     "visualization": True,
-        #     "collision": True,
-        # },
-    ],
 )
 
 
@@ -301,7 +251,7 @@ SceneArgsRegistry["custom_scene_g1_mocap"] = CustomSceneArgs(
         camera_pos=(-2.0, 0.0, 0.6),
         camera_lookat=(0.0, 0.0, 0.6),
         camera_fov=50,
-        max_FPS=200,
+        max_FPS=50,
     ),
     normal=(0.0, 0.0, 1.0),
     remove_ground=False,

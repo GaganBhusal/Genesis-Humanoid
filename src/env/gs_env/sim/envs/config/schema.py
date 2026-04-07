@@ -78,4 +78,7 @@ class MotionEnvArgs(LeggedRobotEnvArgs):
     deviation_thresholds: dict[str, float] = {}
     observed_steps: dict[str, list[int]] = {}
 
+    relative_motion_obs: bool = False
+    motion_obs_history_len: int = 1
+
     reset_to_default_pose_ratio: float = 0.1

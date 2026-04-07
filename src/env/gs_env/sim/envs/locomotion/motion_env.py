@@ -15,7 +15,11 @@ from gs_env.common.utils.math_utils import (
 )
 
 #
-from gs_env.common.utils.motion_utils import MotionLib, build_motion_obs_from_dict
+from gs_env.common.utils.motion_utils import (
+    MotionLib,
+    build_motion_obs_from_dict,
+    stack_motion_obs_from_dict,
+)
 from gs_env.sim.envs.config.schema import MotionEnvArgs
 from gs_env.sim.envs.locomotion.leggedrobot_env import LeggedRobotEnv
 
@@ -152,18 +156,21 @@ class MotionEnv(LeggedRobotEnv):
         self.dof_vel_error_weighted = torch.zeros(self.num_envs, device=self._device)
 
         # Motion library and reference buffers
-        self._motion_lib = MotionLib(
-            motion_file=self._args.motion_file,
-            device=self._device,
-            tracking_link_names=self._args.tracking_link_names,
-            robot_link_names=self._robot.link_names,
-        )
-        if self._args.motion_file is not None:
+        self._no_ref_motion = self._args.motion_file is None
+        if not self._no_ref_motion:
+            self._motion_lib = MotionLib(
+                motion_file=self._args.motion_file,
+                device=self._device,
+                tracking_link_names=self._args.tracking_link_names,
+                robot_link_names=self._robot.link_names,
+            )
             self.ref_joint_idx_local = [
                 self._motion_lib.get_joint_idx_by_name(name) for name in self.robot.dof_names
             ]
-        observed_steps = self._args.observed_steps
-        self._motion_obs_steps = self.motion_lib.get_observed_steps(observed_steps)
+            self._motion_obs_steps = self._motion_lib.get_observed_steps(self._args.observed_steps)
+        else:
+            self._motion_lib = None
+            self._motion_obs_steps = {}
         self.deviation_thresholds = self._args.deviation_thresholds
 
         # tracking link indices
@@ -218,7 +225,7 @@ class MotionEnv(LeggedRobotEnv):
             )
 
         # Get NUM_MOTION_OBS by using motionlib and _build_motion_obs_from_dict
-        if len(self._motion_obs_steps) > 0 and self._args.motion_file is not None:
+        if len(self._motion_obs_steps) > 0 and self.motion_lib is not None:
             # Create dummy data for size calculation
             dummy_motion_ids = torch.zeros(1, device=self._device, dtype=torch.long)
             dummy_motion_times = torch.zeros(1, device=self._device, dtype=torch.float32)
@@ -234,17 +241,29 @@ class MotionEnv(LeggedRobotEnv):
             # motion_obs_sample = self._build_motion_obs_from_dict(
             #     curr_motion_obs_dict, future_motion_obs_dict, dummy_envs_idx
             # )
-            motion_obs_sample = build_motion_obs_from_dict(
-                curr_motion_obs_dict,
-                future_motion_obs_dict,
-                dummy_envs_idx,
-                base_quat=self.base_quat,
-            )
+            if self._args.relative_motion_obs:
+                motion_obs_sample = build_motion_obs_from_dict(
+                    curr_motion_obs_dict,
+                    future_motion_obs_dict,
+                    dummy_envs_idx,
+                    base_quat=self.base_quat,
+                )
+            else:
+                motion_obs_sample = stack_motion_obs_from_dict(
+                    future_motion_obs_dict,
+                    dummy_envs_idx,
+                )
             NUM_MOTION_OBS = motion_obs_sample.shape[1]
         else:
             NUM_MOTION_OBS = 0
         # motion observation buffer (future-step observations after post-processing)
         self.motion_obs = torch.zeros(self.num_envs, NUM_MOTION_OBS, device=self._device)
+        self._num_motion_obs = NUM_MOTION_OBS
+        self.motion_obs_history = torch.zeros(
+            self.num_envs,
+            self._args.motion_obs_history_len * NUM_MOTION_OBS,
+            device=self._device,
+        )
 
         self.tracking_link_pos_global = torch.zeros(
             self.num_envs, len(self.tracking_link_idx_local), 3, device=self._device
@@ -386,6 +405,9 @@ class MotionEnv(LeggedRobotEnv):
     def _reset_buffers(self, envs_idx: torch.Tensor) -> None:
         super()._reset_buffers(envs_idx=envs_idx)
         self.feet_air_time[envs_idx] = 0.0
+        self.motion_obs_history[envs_idx] = self.motion_obs[envs_idx].repeat(
+            1, self._args.motion_obs_history_len
+        )
 
     def reset_idx(self, envs_idx: torch.Tensor) -> None:
         if self._eval_mode:
@@ -687,13 +709,14 @@ class MotionEnv(LeggedRobotEnv):
         """
         Reset the motion ids and times for the given environments.
         """
-        assert self._motion_lib is not None
+        if self.motion_lib is None:
+            return
         n = len(envs_idx)
-        motion_ids = self._motion_lib.sample_motion_ids(n)
-        motion_times = self._motion_lib.sample_motion_times(motion_ids)
+        motion_ids = self.motion_lib.sample_motion_ids(n)
+        motion_times = self.motion_lib.sample_motion_times(motion_ids)
         self._motion_ids[envs_idx] = motion_ids
         self._motion_time_offsets[envs_idx] = motion_times
-        self._motion_lengths[envs_idx] = self._motion_lib.get_motion_length(motion_ids)
+        self._motion_lengths[envs_idx] = self.motion_lib.get_motion_length(motion_ids)
         self.base_yaw_offset[envs_idx] = (
             torch.rand(len(envs_idx), device=self._device, dtype=torch.float32) * 2 * torch.pi
         )
@@ -711,6 +734,8 @@ class MotionEnv(LeggedRobotEnv):
         Reset motion ids to given motion id and reset the motion time to 0.0.
         Hard sync the robot state to current motion frame.
         """
+        if self.motion_lib is None:
+            return
         if motion_id > self.motion_lib.num_motions:
             print(
                 f"Motion ID {motion_id} is out of range. Valid range is 0 to {self.motion_lib.num_motions - 1}"
@@ -719,10 +744,18 @@ class MotionEnv(LeggedRobotEnv):
         print(f"Hard resetting motion to {self.motion_lib.motion_names[motion_id]}")
         self._motion_ids[envs_idx] = motion_id
         self._motion_time_offsets[envs_idx] = 0.0
-        self._motion_lengths[envs_idx] = self._motion_lib.get_motion_length(
+        self._motion_lengths[envs_idx] = self.motion_lib.get_motion_length(
             self._motion_ids[envs_idx]
         )
         self.hard_sync_motion(envs_idx=envs_idx)
+
+    def _update_motion_obs_history(self, envs_idx: torch.Tensor) -> None:
+        N = self._num_motion_obs
+        if self._args.motion_obs_history_len > 1:
+            self.motion_obs_history[envs_idx] = torch.roll(
+                self.motion_obs_history[envs_idx], -N, dims=-1
+            )
+        self.motion_obs_history[envs_idx, -N:] = self.motion_obs[envs_idx]
 
     def _update_ref_motion(
         self,
@@ -733,6 +766,8 @@ class MotionEnv(LeggedRobotEnv):
         """
         Update the reference motion (next motion frame) and motion_obs for the given environments.
         """
+        if self.motion_lib is None:
+            return
         if envs_idx is None:
             envs_idx = torch.arange(self.num_envs, device=self._device, dtype=torch.long)
         if motion_ids is None:
@@ -758,7 +793,7 @@ class MotionEnv(LeggedRobotEnv):
             terminate_after_floor_collision_mask,
             foot_contact,
             foot_contact_weighted,
-        ) = self._motion_lib.get_ref_motion_frame(motion_ids, motion_times)
+        ) = self.motion_lib.get_ref_motion_frame(motion_ids, motion_times)
 
         _ = link_lin_vel_local
         _ = link_ang_vel_local
@@ -766,15 +801,19 @@ class MotionEnv(LeggedRobotEnv):
         curr_motion_obs_dict, future_motion_obs_dict = self.motion_lib.get_motion_future_obs(
             motion_ids, motion_times, self._motion_obs_steps
         )
-        # self.motion_obs[envs_idx] = self._build_motion_obs_from_dict(
-        #     curr_motion_obs_dict, future_motion_obs_dict, envs_idx
-        # )
-        self.motion_obs[envs_idx] = build_motion_obs_from_dict(
-            curr_motion_obs_dict,
-            future_motion_obs_dict,
-            envs_idx,
-            base_quat=self.base_quat[envs_idx],
-        )
+        if len(self._motion_obs_steps) > 0 and self._args.relative_motion_obs:
+            self.motion_obs[envs_idx] = build_motion_obs_from_dict(
+                curr_motion_obs_dict,
+                future_motion_obs_dict,
+                envs_idx,
+                base_quat=self.base_quat[envs_idx],
+            )
+        elif len(self._motion_obs_steps) > 0:
+            self.motion_obs[envs_idx] = stack_motion_obs_from_dict(
+                future_motion_obs_dict,
+                envs_idx,
+            )
+        self._update_motion_obs_history(envs_idx)
 
         base_pos = (
             quat_apply(self.base_yaw_offset_quat[envs_idx], base_pos)
@@ -874,25 +913,37 @@ class MotionEnv(LeggedRobotEnv):
 
         obs_components = []
         for key in args_to_use.actor_obs_terms:
-            if key == "motion_obs" and obs_args is not None:
-                # Build a teacher-specific motion_obs on the fly
-                steps_map = self.motion_lib.get_observed_steps(args_to_use.observed_steps)
-                if len(steps_map) > 0:
-                    envs_idx = torch.arange(self.num_envs, device=self._device, dtype=torch.long)
-                    motion_ids = self.motion_ids[envs_idx]
-                    motion_times = self.motion_times[envs_idx]
-                    curr_d, future_d = self.motion_lib.get_motion_future_obs(
-                        motion_ids, motion_times, steps_map
+            if key == "motion_obs_history" and obs_args is not None:
+                # Build a teacher-specific motion_obs_history on the fly
+                if args_to_use.motion_obs_history_len != 1:
+                    raise ValueError(
+                        "motion_obs_history_len must be 1 when using teacher-specific obs_args"
                     )
-                    # obs_gt = self._build_motion_obs_from_dict(curr_d, future_d, envs_idx)
-                    obs_gt = build_motion_obs_from_dict(
-                        curr_d,
-                        future_d,
-                        envs_idx,
-                        base_quat=self.base_quat[envs_idx],
-                    )
+                if self.motion_lib is None:
+                    raise ValueError("motion_lib is required to use motion_obs_history")
                 else:
-                    obs_gt = torch.zeros(self.num_envs, 0, device=self._device)
+                    steps_map = self.motion_lib.get_observed_steps(args_to_use.observed_steps)
+                    if len(steps_map) > 0:
+                        envs_idx = torch.arange(
+                            self.num_envs, device=self._device, dtype=torch.long
+                        )
+                        motion_ids = self.motion_ids[envs_idx]
+                        motion_times = self.motion_times[envs_idx]
+                        curr_d, future_d = self.motion_lib.get_motion_future_obs(
+                            motion_ids, motion_times, steps_map
+                        )
+                        # obs_gt = self._build_motion_obs_from_dict(curr_d, future_d, envs_idx)
+                        if self._args.relative_motion_obs:
+                            obs_gt = build_motion_obs_from_dict(
+                                curr_d,
+                                future_d,
+                                envs_idx,
+                                base_quat=self.base_quat[envs_idx],
+                            )
+                        else:
+                            obs_gt = stack_motion_obs_from_dict(future_d, envs_idx)
+                    else:
+                        obs_gt = torch.zeros(self.num_envs, 0, device=self._device)
                 obs_gt = obs_gt * args_to_use.obs_scales.get(key, 1.0)
             else:
                 obs_gt = getattr(self, key) * args_to_use.obs_scales.get(key, 1.0)
@@ -917,6 +968,8 @@ class MotionEnv(LeggedRobotEnv):
         """
         Hard sync the robot state to current motion frame for the given environments.
         """
+        if self.motion_lib is None:
+            return
         motion_ids = self._motion_ids[envs_idx]
         motion_times = self.motion_times[envs_idx]
         self._update_ref_motion(envs_idx=envs_idx, motion_ids=motion_ids, motion_times=motion_times)
@@ -927,7 +980,7 @@ class MotionEnv(LeggedRobotEnv):
             base_ang_vel,
             dof_pos,
             dof_vel,
-        ) = self._motion_lib.get_motion_frame(motion_ids, motion_times)
+        ) = self.motion_lib.get_motion_frame(motion_ids, motion_times)
         base_pos = (
             quat_apply(self.base_yaw_offset_quat[envs_idx], base_pos)
             + self.base_pos_offset[envs_idx]
@@ -951,7 +1004,7 @@ class MotionEnv(LeggedRobotEnv):
         self._motion_lib = motion_lib
 
     @property
-    def motion_lib(self) -> MotionLib:
+    def motion_lib(self) -> MotionLib | None:
         return self._motion_lib
 
     @property

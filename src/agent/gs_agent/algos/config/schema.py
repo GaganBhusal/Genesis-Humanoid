@@ -59,6 +59,7 @@ class PPOArgs(BaseModel):
     max_grad_norm: PositiveFloat = 1.0
     target_kl: PositiveFloat = 0.02
     use_clipped_value_loss: bool = False
+    init_std: PositiveFloat = 1.0
 
     # Training
     num_epochs: NonNegativeInt = 10

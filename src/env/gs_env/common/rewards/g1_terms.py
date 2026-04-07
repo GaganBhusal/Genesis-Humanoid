@@ -82,8 +82,11 @@ class MotionStandStillFeetContactPenalty(RewardTerm):
         self, foot_contact_weighted: torch.Tensor, ref_foot_contact: torch.Tensor
     ) -> torch.Tensor:  # type: ignore
         stand_still = torch.all(ref_foot_contact > 0.6, dim=-1)
-        insufficient_contact = (0.5 - foot_contact_weighted).clamp(min=0.0).square().sum(dim=-1)
-        return -insufficient_contact * stand_still
+        insufficient_contact = (0.4 - foot_contact_weighted).clamp(min=0.0).square().sum(dim=-1)
+        excessive_contact = (
+            (foot_contact_weighted - 0.6).clamp(min=0.0, max=0.5).square().sum(dim=-1)
+        )
+        return -(insufficient_contact + excessive_contact) * stand_still
 
 
 class MotionStandStillAnkleVelPenalty(RewardTerm):
@@ -162,6 +165,20 @@ class WaistVelPenalty(RewardTerm):
         return -torch.sum(torch.square(dof_vel[:, [12, 13, 14]]), dim=-1)
 
 
+class BaseRollPenalty(RewardTerm):
+    """
+    Penalize the body roll.
+
+    Args:
+        body_euler: Body Euler tensor of shape (B, 3) where B is the batch size.
+    """
+
+    required_keys = ("base_euler",)
+
+    def _compute(self, base_euler: torch.Tensor) -> torch.Tensor:  # type: ignore
+        return -torch.square(base_euler[:, 0])
+
+
 class BodyRollPenalty(RewardTerm):
     """
     Penalize the body roll.
@@ -191,7 +208,7 @@ class AnkleTorquePenalty(RewardTerm):
 
 
 class G1FeetSlidePenalty(FeetSlidePenalty):
-    feet_slide_height_threshold = 0.2
+    feet_slide_height_threshold = 0.1
 
 
 class G1FeetHeightPenalty(FeetHeightPenalty):

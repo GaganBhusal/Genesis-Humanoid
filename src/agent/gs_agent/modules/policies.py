@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch import nn
 from torch.distributions import Normal
@@ -8,10 +10,12 @@ from gs_agent.bases.policy import Policy
 
 # === Gaussian Policy === #
 class GaussianPolicy(Policy):
-    def __init__(self, policy_backbone: NetworkBackbone, action_dim: int) -> None:
+    def __init__(
+        self, policy_backbone: NetworkBackbone, action_dim: int, init_std: float = 1.0
+    ) -> None:
         super().__init__(policy_backbone, action_dim)
         self.mu = nn.Linear(self.backbone.output_dim, self.action_dim)
-        self.log_std = nn.Parameter(torch.ones(self.action_dim) * 0.0)
+        self.log_std = nn.Parameter(torch.ones(self.action_dim) * math.log(init_std))
         Normal.set_default_validate_args(False)
 
         self._init_params()

@@ -7,3 +7,12 @@
 [submodule "src/env/gs_env/real/xr"]
 	path = src/env/gs_env/real/xr
 	url = git@github.com:OwenOwl/XRStreamer.git
+[submodule "src/env/gs_env/real/realsense"]
+	path = src/env/gs_env/real/realsense
+	url = git@github.com:ziyanx02/realsense.git
+[submodule "src/env/gs_env/real/changingtek"]
+	path = src/env/gs_env/real/changingtek
+	url = git@github.com:ziyanx02/changingtek.git
+[submodule "src/env/gs_env/real/witimu"]
+	path = src/env/gs_env/real/witimu
+	url = git@github.com:ziyanx02/witimu.git

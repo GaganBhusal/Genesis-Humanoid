@@ -12,3 +12,5 @@ cyclonedds/
 GMR/
 .vscode/
 .env
+*.npz
+*.pkl
