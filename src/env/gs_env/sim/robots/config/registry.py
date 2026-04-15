@@ -48,7 +48,7 @@ MaterialArgsRegistry["g1_default"] = RigidMaterialArgs(
 )
 
 
-MaterialArgsRegistry["g1_fixed"] = RigidMaterialArgs(
+MaterialArgsRegistry["g1_floating"] = RigidMaterialArgs(
     rho=200.0,
     friction=None,
     needs_coup=True,
@@ -87,7 +87,7 @@ MorphArgsRegistry["g1_default"] = URDFMorphArgs(
     collision=True,
     requires_jac_and_IK=True,
     is_free=True,
-    file="assets/robot/unitree_g1/g1_custom_collision_29dof.urdf",
+    file="assets/robot/unitree_g1/g1_29dof_simple_collision.urdf",
     scale=1.0,
     convexify=True,
     recompute_inertia=False,
@@ -99,21 +99,21 @@ MorphArgsRegistry["g1_default"] = URDFMorphArgs(
 )
 
 
-MorphArgsRegistry["g1_fixed"] = URDFMorphArgs(
-    pos=(0.0, 0.0, 1.0),
+MorphArgsRegistry["g1_gripper"] = URDFMorphArgs(
+    pos=(0.0, 0.0, 0.8),
     euler=(0, 0, 0),
     quat=None,
     visualization=True,
-    collision=False,
+    collision=True,
     requires_jac_and_IK=True,
     is_free=True,
-    file="assets/robot/unitree_g1/g1_custom_collision_29dof.urdf",
+    file="assets/robot/unitree_g1/g1_gripper_simple_collision.urdf",
     scale=1.0,
     convexify=True,
     recompute_inertia=False,
-    fixed=True,
+    fixed=False,
     prioritize_urdf_material=False,
-    merge_fixed_links=False,
+    merge_fixed_links=True,
     links_to_keep=[],
     decimate=True,
 )
@@ -261,7 +261,7 @@ G1_default_dof_pos: dict[str, float] = {
     "right_wrist_pitch_joint": 0.0,
     "right_wrist_yaw_joint": 0.0,
 }
-G1_kp_dict: dict[str, float] = {
+G1_default_kp_dict: dict[str, float] = {
     "hip_roll": 100.0,
     "hip_pitch": 100.0,
     "hip_yaw": 100.0,
@@ -279,7 +279,7 @@ G1_kp_dict: dict[str, float] = {
     "wrist_pitch": 13.0,
     "wrist_yaw": 12.0,
 }
-G1_kd_dict: dict[str, float] = {
+G1_default_kd_dict: dict[str, float] = {
     "hip_roll": 20.0,
     "hip_pitch": 20.0,
     "hip_yaw": 20.0,
@@ -293,6 +293,42 @@ G1_kd_dict: dict[str, float] = {
     "shoulder_pitch": 6.0,
     "shoulder_yaw": 2.2,
     "elbow": 3.0,
+    "wrist_roll": 2.0,
+    "wrist_pitch": 2.6,
+    "wrist_yaw": 2.4,
+}
+G1_gripper_kp_dict: dict[str, float] = {
+    "hip_roll": 100.0,
+    "hip_pitch": 100.0,
+    "hip_yaw": 100.0,
+    "knee": 100.0,
+    "ankle_roll": 30.0,
+    "ankle_pitch": 30.0,
+    "waist_roll": 150.0,
+    "waist_pitch": 150.0,
+    "waist_yaw": 100.0,
+    "shoulder_roll": 50.0,
+    "shoulder_pitch": 50.0,
+    "shoulder_yaw": 20.0,
+    "elbow": 22.0,
+    "wrist_roll": 10.0,
+    "wrist_pitch": 13.0,
+    "wrist_yaw": 12.0,
+}
+G1_gripper_kd_dict: dict[str, float] = {
+    "hip_roll": 20.0,
+    "hip_pitch": 20.0,
+    "hip_yaw": 20.0,
+    "knee": 20.0,
+    "ankle_roll": 6.0,
+    "ankle_pitch": 6.0,
+    "waist_roll": 10.0,
+    "waist_pitch": 10.0,
+    "waist_yaw": 10.0,
+    "shoulder_roll": 10.0,
+    "shoulder_pitch": 10.0,
+    "shoulder_yaw": 4.0,
+    "elbow": 4.5,
     "wrist_roll": 2.0,
     "wrist_pitch": 2.6,
     "wrist_yaw": 2.4,
@@ -363,6 +399,7 @@ RobotArgsRegistry["g1_default"] = HumanoidRobotArgs(
     material_args=MaterialArgsRegistry["g1_default"],
     morph_args=MorphArgsRegistry["g1_default"],
     dr_args=DRArgsRegistry["default"],
+    steps_to_randomize_pds=40,
     visualize_contact=False,
     vis_mode="visual",
     ctrl_type=CtrlType.DR_JOINT_POSITION_VELOCITY,
@@ -379,8 +416,8 @@ RobotArgsRegistry["g1_default"] = HumanoidRobotArgs(
     dof_names=G1_dof_names,
     default_dof_pos=G1_default_dof_pos,
     soft_dof_pos_range=0.9,
-    dof_kp=G1_kp_dict,
-    dof_kd=G1_kd_dict,
+    dof_kp=G1_default_kp_dict,
+    dof_kd=G1_default_kd_dict,
     dof_vel_limit=G1_vel_limit_dict,
     dof_torque_limit=G1_torque_limit_dict,
     action_scale=0.25,
@@ -397,43 +434,11 @@ RobotArgsRegistry["g1_default"] = HumanoidRobotArgs(
 )
 
 
-RobotArgsRegistry["g1_no_dr"] = HumanoidRobotArgs(
+RobotArgsRegistry["g1_gripper"] = HumanoidRobotArgs(
     material_args=MaterialArgsRegistry["g1_default"],
-    morph_args=MorphArgsRegistry["g1_default"],
-    dr_args=DRArgsRegistry["no_randomization"],
-    visualize_contact=False,
-    vis_mode="visual",
-    ctrl_type=CtrlType.DR_JOINT_POSITION,
-    body_link_name="torso_link",
-    foot_link_names=[
-        "left_ankle_roll_link",
-        "right_ankle_roll_link",
-    ],
-    show_target=True,
-    dof_names=G1_dof_names,
-    default_dof_pos=G1_default_dof_pos,
-    soft_dof_pos_range=0.9,
-    dof_kp=G1_kp_dict,
-    dof_kd=G1_kd_dict,
-    dof_vel_limit=G1_vel_limit_dict,
-    dof_torque_limit=G1_torque_limit_dict,
-    action_scale=0.25,
-    ctrl_freq=50,
-    decimation=4,
-    feed_forward_ratio=G1_feed_forward_ratio_dict,
-    indirect_drive_joint_names=[
-        "ankle",
-        "waist_pitch",
-        "waist_roll",
-    ],
-    adaptive_action_scale=False,
-)
-
-
-RobotArgsRegistry["g1_fixed"] = HumanoidRobotArgs(
-    material_args=MaterialArgsRegistry["g1_fixed"],
-    morph_args=MorphArgsRegistry["g1_fixed"],
+    morph_args=MorphArgsRegistry["g1_gripper"],
     dr_args=DRArgsRegistry["default"],
+    steps_to_randomize_pds=40,
     visualize_contact=False,
     vis_mode="visual",
     ctrl_type=CtrlType.DR_JOINT_POSITION_VELOCITY,
@@ -442,22 +447,27 @@ RobotArgsRegistry["g1_fixed"] = HumanoidRobotArgs(
         "left_ankle_roll_link",
         "right_ankle_roll_link",
     ],
+    external_force_links_idx=[
+        "left_wrist_yaw_link",
+        "right_wrist_yaw_link",
+    ],
     show_target=True,
     dof_names=G1_dof_names,
     default_dof_pos=G1_default_dof_pos,
     soft_dof_pos_range=0.9,
-    dof_kp=G1_kp_dict,
-    dof_kd=G1_kd_dict,
+    dof_kp=G1_gripper_kp_dict,
+    dof_kd=G1_gripper_kd_dict,
     dof_vel_limit=G1_vel_limit_dict,
     dof_torque_limit=G1_torque_limit_dict,
     action_scale=0.25,
+    ctrl_freq=50,
+    decimation=4,
+    adaptive_action_scale=False,
     feed_forward_ratio=G1_feed_forward_ratio_dict,
     indirect_drive_joint_names=[
         "ankle",
         "waist_pitch",
         "waist_roll",
     ],
-    adaptive_action_scale=False,
-    ctrl_freq=50,
-    decimation=4,
+    low_pass_alpha=0.5,
 )

@@ -749,14 +749,6 @@ class MotionEnv(LeggedRobotEnv):
         )
         self.hard_sync_motion(envs_idx=envs_idx)
 
-    def _update_motion_obs_history(self, envs_idx: torch.Tensor) -> None:
-        N = self._num_motion_obs
-        if self._args.motion_obs_history_len > 1:
-            self.motion_obs_history[envs_idx] = torch.roll(
-                self.motion_obs_history[envs_idx], -N, dims=-1
-            )
-        self.motion_obs_history[envs_idx, -N:] = self.motion_obs[envs_idx]
-
     def _update_ref_motion(
         self,
         envs_idx: torch.Tensor | None = None,
@@ -813,7 +805,12 @@ class MotionEnv(LeggedRobotEnv):
                 future_motion_obs_dict,
                 envs_idx,
             )
-        self._update_motion_obs_history(envs_idx)
+        # update motion_obs_history
+        if self._args.motion_obs_history_len > 1:
+            self.motion_obs_history[envs_idx] = torch.roll(
+                self.motion_obs_history[envs_idx], -self._num_motion_obs, dims=-1
+            )
+        self.motion_obs_history[envs_idx, -self._num_motion_obs :] = self.motion_obs[envs_idx]
 
         base_pos = (
             quat_apply(self.base_yaw_offset_quat[envs_idx], base_pos)

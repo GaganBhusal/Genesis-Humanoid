@@ -250,6 +250,9 @@ def evaluate_policy(
                 opset_version=11,
                 do_constant_folding=True,
                 dynamo=False,
+                input_names=["obs"],
+                output_names=["action"],
+                dynamic_axes={"obs": {0: "batch_size"}, "action": {0: "batch_size"}},
             )
             print(f"ONNX policy saved to: {onnx_policy_path}")
         except Exception as e:

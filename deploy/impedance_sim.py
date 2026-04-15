@@ -10,6 +10,7 @@ import numpy as np
 import torch
 from gs_env.sim.envs.config.registry import EnvArgsRegistry
 from gs_env.sim.envs.locomotion.leggedrobot_env import LeggedRobotEnv
+from gs_env.sim.robots.config.registry import MaterialArgsRegistry, RobotArgsRegistry
 
 # Add examples to path to import utils
 sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
@@ -111,7 +112,7 @@ def resonate_dof_test(
         yscale="linear",
     )
 
-    plot_path = "./debug.png"
+    plot_path = f"./debug_{dof_idx}.png"
     plt.tight_layout()
     plt.savefig(plot_path, dpi=150)
     plt.close(fig)
@@ -123,15 +124,31 @@ def main(
     show_viewer: bool = False,
     device: str = "cpu",
 ) -> None:
-    # Load checkpoint and env_args
-    env_args = EnvArgsRegistry["g1_fixed"]
+    env_args = EnvArgsRegistry["g1_motion"]
+    material_args = MaterialArgsRegistry["g1_floating"]
+    robot_args = RobotArgsRegistry["g1_gripper"]
 
-    robot_args = env_args.robot_args.model_copy(
+    morph_args = robot_args.morph_args.model_copy(
         update={
-            "decimation": 4,
+            "fixed": True,
         }
     )
-    env_args = env_args.model_copy(update={"robot_args": robot_args})
+    robot_args = robot_args.model_copy(
+        update={
+            "material_args": material_args,
+            "morph_args": morph_args,
+            "steps_to_randomize_pds": int(1e6),
+        }
+    )
+    env_args = env_args.model_copy(
+        update={
+            "robot_args": robot_args,
+            "reward_args": {},
+            "actor_obs_terms": [],
+            "critic_obs_terms": [],
+            "action_latency": 0,
+        }
+    )
 
     print("Running in SIMULATION mode")
 
@@ -159,6 +176,13 @@ def main(
         nonlocal env, extra_impedance
         post_order_dof_names = [joint.name for joint in reversed(env.robot.joints)]
         # post_order_dof_names = ["left_ankle_pitch_joint"]
+        dof_names = []
+        for joint_name in post_order_dof_names:
+            if "left" in joint_name and (
+                "wrist" in joint_name or "shoulder" in joint_name or "elbow" in joint_name
+            ):
+                dof_names.append(joint_name)
+        post_order_dof_names = dof_names
         dof_names = env.dof_names
         dof_kp = env.robot.dof_kp
         dof_kd = env.robot.dof_kd

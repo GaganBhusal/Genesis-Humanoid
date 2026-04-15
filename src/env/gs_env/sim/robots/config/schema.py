@@ -89,6 +89,7 @@ class LeggedRobotArgs(BaseModel):
     material_args: RigidMaterialArgs
     morph_args: URDFMorphArgs
     dr_args: DomainRandomizationArgs
+    steps_to_randomize_pds: int
     visualize_contact: bool
     vis_mode: str
     ctrl_type: CtrlType

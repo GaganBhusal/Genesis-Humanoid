@@ -11,6 +11,7 @@ import numpy as np
 import torch
 from gs_env.real.leggedrobot_env import UnitreeLeggedEnv
 from gs_env.sim.envs.config.registry import EnvArgsRegistry
+from gs_env.sim.robots.config.registry import MaterialArgsRegistry, RobotArgsRegistry
 
 # Add examples to path to import utils
 sys.path.insert(0, str(Path(__file__).parent.parent / "examples"))
@@ -112,19 +113,32 @@ def resonate_dof_test(
     return natural_period
 
 
-def main(
-    show_viewer: bool = False,
-    device: str = "cpu",
-) -> None:
-    # Load checkpoint and env_args
-    env_args = EnvArgsRegistry["g1_fixed"]
+def main(device: str = "cpu") -> None:
+    env_args = EnvArgsRegistry["g1_motion"]
+    material_args = MaterialArgsRegistry["g1_floating"]
+    robot_args = RobotArgsRegistry["g1_gripper"]
 
-    robot_args = env_args.robot_args.model_copy(
+    morph_args = robot_args.morph_args.model_copy(
         update={
-            "decimation": 4,
+            "fixed": True,
         }
     )
-    env_args = env_args.model_copy(update={"robot_args": robot_args})
+    robot_args = robot_args.model_copy(
+        update={
+            "material_args": material_args,
+            "morph_args": morph_args,
+            "steps_to_randomize_pds": int(1e6),
+        }
+    )
+    env_args = env_args.model_copy(
+        update={
+            "robot_args": robot_args,
+            "reward_args": {},
+            "actor_obs_terms": [],
+            "critic_obs_terms": [],
+            "action_latency": 0,
+        }
+    )
 
     print("Running in REAL ROBOT mode")
 

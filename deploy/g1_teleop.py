@@ -13,7 +13,7 @@ from gs_env.common.utils.math_utils import (
     quat_mul,
     quat_to_rotation_6D,
 )
-from gs_env.common.utils.motion_utils import build_motion_obs_from_dict
+from gs_env.common.utils.motion_utils import build_motion_obs_from_dict, stack_motion_obs_from_dict
 from gs_env.sim.envs.config.registry import EnvArgsRegistry
 from gs_env.sim.envs.config.schema import MotionEnvArgs
 
@@ -75,7 +75,7 @@ except ImportError:
 
 def load_checkpoint_and_env_args(
     exp_name: str, num_ckpt: int | None = None, device: str = "cpu", onnx: bool = False
-) -> tuple[OnnxPolicyWrapper | torch.jit.ScriptModule, MotionEnvArgs]:
+) -> tuple[torch.jit.ScriptModule, MotionEnvArgs]:
     """Load JIT checkpoint and env_args from deploy/logs directory.
 
     Args:
@@ -325,6 +325,7 @@ def main(
         redis_client.update()
         redis_client.update_quat(env.base_quat)
 
+        motion_obs_history = None
         obs_history = None
 
         rate_limit_dt = 1.0 / rate_limit
@@ -349,7 +350,7 @@ def main(
                     obs_gt = last_action_t
                 elif key.startswith("ref_"):
                     obs_gt = getattr(redis_client, key).reshape(1, -1)
-                elif key == "motion_obs":
+                elif key == "motion_obs_history" or key == "motion_obs":
                     curr_dict = {
                         "base_pos": redis_client.last_ref_base_pos,
                         "base_quat": redis_client.last_ref_base_quat,
@@ -358,17 +359,34 @@ def main(
                     base_quat = env.base_quat
                     start = time.perf_counter()
                     start_t = time.thread_time()
-                    obs_gt = build_motion_obs_from_dict(
-                        curr_dict,
-                        future_dict,
-                        torch.tensor([0], dtype=torch.long, device=device),
-                        base_quat=base_quat,
-                    )
+                    if env_args.relative_motion_obs:
+                        motion_obs = build_motion_obs_from_dict(
+                            curr_dict,
+                            future_dict,
+                            torch.tensor([0], dtype=torch.long, device=device),
+                            base_quat=base_quat,
+                        )
+                    else:
+                        motion_obs = stack_motion_obs_from_dict(
+                            future_dict,
+                            torch.tensor([0], dtype=torch.long, device=device),
+                        )
                     end = time.perf_counter()
                     end_t = time.thread_time()
                     if end - start > 0.05:
                         print(f"motion_obs compute took {end - start:.4f}s")
                         print(f"motion_obs compute thread time: {end_t - start_t:.4f}s")
+                    if key == "motion_obs":
+                        obs_gt = motion_obs.reshape(1, -1)
+                    else:
+                        if motion_obs_history is None:
+                            motion_obs_history = motion_obs.reshape(1, -1).repeat(
+                                env_args.motion_obs_history_len, 1
+                            )
+                        else:
+                            motion_obs_history[:-1, :] = motion_obs_history[1:, :]
+                            motion_obs_history[-1, :] = motion_obs.reshape(1, -1)
+                        obs_gt = motion_obs_history.clone().reshape(1, -1)
                 elif key == "diff_base_yaw":
                     obs_gt = (redis_client.ref_base_euler[:, 2] - env.base_euler[:, 2]).reshape(
                         1, -1

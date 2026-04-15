@@ -202,7 +202,7 @@ class LeggedRobotBase(BaseGymRobot):
         self._logging = False
 
         self._steps_since_randomize_pds = 0
-        self._steps_to_randomize_pds = 40
+        self._steps_to_randomize_pds = self._args.steps_to_randomize_pds
 
     def post_build_init(self, eval_mode: bool = False) -> None:
         self._mass = self._robot.get_mass()
