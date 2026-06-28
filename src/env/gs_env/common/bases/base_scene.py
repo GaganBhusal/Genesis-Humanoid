@@ -39,6 +39,17 @@ class BaseSimScene(abc.ABC):
         return self._scene.add_entity(morph, material, surface, visualize_contact, vis_mode)
 
     def build(self) -> None:
+        self.ball = self._scene.add_entity(
+            morph=gs.morphs.Sphere(
+                radius=0.11,
+                pos=(10, 0, 0),
+                fixed = False
+            ), 
+            surface=gs.surfaces.Default(
+                color=(100/255, 67/255, 50/255, 1)
+            ),
+        )
+
         self._scene.build(
             n_envs=self._num_envs,
             env_spacing=self._env_spacing,

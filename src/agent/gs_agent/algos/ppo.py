@@ -384,12 +384,36 @@ class PPO(BaseAlgo):
     def load(self, path: Path, load_optimizer: bool = True) -> None:
         """Load the algorithm from a file."""
         checkpoint = torch.load(path, map_location=self.device)
-        self._actor.load_state_dict(checkpoint["actor_state_dict"])
-        self._critic.load_state_dict(checkpoint["critic_state_dict"])
+        
+        # Load actor
+        if "actor_state_dict" in checkpoint:
+            self._actor.load_state_dict(checkpoint["actor_state_dict"])
+        elif "model_state_dict" in checkpoint:
+            self._actor.load_state_dict(checkpoint["model_state_dict"])
+        else:
+            self._actor.load_state_dict(checkpoint)
+
+        # Load critic if present
+        if "critic_state_dict" in checkpoint:
+            self._critic.load_state_dict(checkpoint["critic_state_dict"])
+        else:
+            print("Warning: 'critic_state_dict' not found in checkpoint. Leaving critic randomly initialized.")
+
+        # Load optimizers if present
         if load_optimizer:
-            self._actor_optimizer.load_state_dict(checkpoint["actor_optimizer_state_dict"])
-            self._critic_optimizer.load_state_dict(checkpoint["critic_optimizer_state_dict"])
-        self.current_iter = checkpoint["iter"]
+            if "actor_optimizer_state_dict" in checkpoint:
+                try:
+                    self._actor_optimizer.load_state_dict(checkpoint["actor_optimizer_state_dict"])
+                except Exception as e:
+                    print(f"Warning: Could not load actor optimizer: {e}")
+            if "critic_optimizer_state_dict" in checkpoint:
+                try:
+                    self._critic_optimizer.load_state_dict(checkpoint["critic_optimizer_state_dict"])
+                except Exception as e:
+                    print(f"Warning: Could not load critic optimizer: {e}")
+                
+        if "iter" in checkpoint:
+            self.current_iter = checkpoint["iter"]
 
     def train_mode(self) -> None:
         """Set the algorithm to train mode."""

@@ -99,6 +99,26 @@ MorphArgsRegistry["g1_default"] = URDFMorphArgs(
 )
 
 
+MorphArgsRegistry["g1_23dof"] = URDFMorphArgs(
+    pos=(0.0, 0.0, 0.8),
+    euler=(0, 0, 0),
+    quat=None,
+    visualization=True,
+    collision=True,
+    requires_jac_and_IK=True,
+    is_free=True,
+    file="assets/robot/unitree_g1/g1_23dof.urdf",
+    scale=1.0,
+    convexify=True,
+    recompute_inertia=False,
+    fixed=False,
+    prioritize_urdf_material=False,
+    merge_fixed_links=True,
+    links_to_keep=[],
+    decimate=True,
+)
+
+
 MorphArgsRegistry["g1_gripper"] = URDFMorphArgs(
     pos=(0.0, 0.0, 0.8),
     euler=(0, 0, 0),
@@ -197,6 +217,36 @@ G1_dof_names: list[str] = [
     "right_wrist_roll_joint",
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
+]
+G1_23_dof_names: list[str] = [
+    # Left Lower body 0:6
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    # Right Lower body 6:12
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    # Waist 12:13
+    "waist_yaw_joint",
+    # Left Upper body 13:18
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    # Right Upper body 18:23
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
 ]
 G1_no_waist_dof_names: list[str] = [
     # Left Lower body 0:6
@@ -468,6 +518,43 @@ RobotArgsRegistry["g1_gripper"] = HumanoidRobotArgs(
         "ankle",
         "waist_pitch",
         "waist_roll",
+    ],
+    low_pass_alpha=0.5,
+)
+
+
+RobotArgsRegistry["g1_23dof"] = HumanoidRobotArgs(
+    material_args=MaterialArgsRegistry["g1_default"],
+    morph_args=MorphArgsRegistry["g1_23dof"],
+    dr_args=DRArgsRegistry["default"],
+    steps_to_randomize_pds=40,
+    visualize_contact=False,
+    vis_mode="visual",
+    ctrl_type=CtrlType.DR_JOINT_POSITION_VELOCITY,
+    body_link_name="torso_link",
+    foot_link_names=[
+        "left_ankle_roll_link",
+        "right_ankle_roll_link",
+    ],
+    external_force_links_idx=[
+        "left_wrist_roll_rubber_hand",
+        "right_wrist_roll_rubber_hand",
+    ],
+    show_target=True,
+    dof_names=G1_23_dof_names,
+    default_dof_pos=G1_default_dof_pos,
+    soft_dof_pos_range=0.9,
+    dof_kp=G1_default_kp_dict,
+    dof_kd=G1_default_kd_dict,
+    dof_vel_limit=G1_vel_limit_dict,
+    dof_torque_limit=G1_torque_limit_dict,
+    action_scale=0.25,
+    ctrl_freq=50,
+    decimation=4,
+    adaptive_action_scale=False,
+    feed_forward_ratio=G1_feed_forward_ratio_dict,
+    indirect_drive_joint_names=[
+        "ankle",
     ],
     low_pass_alpha=0.5,
 )

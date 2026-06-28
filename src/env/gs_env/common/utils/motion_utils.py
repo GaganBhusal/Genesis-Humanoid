@@ -1010,10 +1010,16 @@ class GeneralMotionRetargeting:
         if self.g1_hack:
             # hacked initial pose for g1
             q = self.configuration.q
-            q[7 + 0] = -0.5
-            q[7 + 6] = -0.5
-            q[7 + 3] = 0.5
-            q[7 + 9] = 0.5
+            for joint_name, val in [
+                ("left_hip_pitch_joint", -0.5),
+                ("right_hip_pitch_joint", -0.5),
+                ("left_knee_joint", 0.5),
+                ("right_knee_joint", 0.5),
+            ]:
+                jnt_id = mj.mj_name2id(self.model, mj.mjtObj.mjOBJ_JOINT, joint_name)
+                if jnt_id != -1:
+                    qpos_idx = self.model.jnt_qposadr[jnt_id]
+                    q[qpos_idx] = val
             self.configuration.update(q=q)
 
         self.tasks = [[] for _ in range(self.num_ik_match_tables)]
@@ -1051,15 +1057,18 @@ class GeneralMotionRetargeting:
         if self.g1_hack:
             # hacked initial pose for g1
             q = self.configuration.q
-            # should yaw
-            q[7 + 17] = 0.0
-            q[7 + 24] = 0.0
-            # elbow
-            q[7 + 18] = 0.5
-            q[7 + 25] = 0.5
-            # wrist pitch
-            q[7 + 20] = 0.0
-            q[7 + 27] = 0.0
+            for joint_name, val in [
+                ("left_shoulder_yaw_joint", 0.0),
+                ("right_shoulder_yaw_joint", 0.0),
+                ("left_elbow_joint", 0.5),
+                ("right_elbow_joint", 0.5),
+                ("left_wrist_pitch_joint", 0.0),
+                ("right_wrist_pitch_joint", 0.0),
+            ]:
+                jnt_id = mj.mj_name2id(self.model, mj.mjtObj.mjOBJ_JOINT, joint_name)
+                if jnt_id != -1:
+                    qpos_idx = self.model.jnt_qposadr[jnt_id]
+                    q[qpos_idx] = val
             self.configuration.update(q=q)
 
         for i in range(self.num_ik_match_tables):
@@ -1191,7 +1200,12 @@ class G1Retargeter:
         "pelvis",
     )
 
-    def __init__(self, joint_space_retarget: bool = False) -> None:
+    def __init__(
+        self,
+        joint_space_retarget: bool = False,
+        robot_xml_file: str = "assets/robot/unitree_g1/g1_mocap_29dof.xml",
+        ik_config_file: str = "assets/robot/unitree_g1/optitrack_to_g1.json",
+    ) -> None:
         self.frame_rate = 120.0
 
         # Indices into the 6-link tensors (fixed order above)
@@ -1255,8 +1269,8 @@ class G1Retargeter:
             from gs_env.common.utils.motion_utils import GeneralMotionRetargeting
 
             self.joint_space_retargeter = GeneralMotionRetargeting(
-                robot_xml_file="assets/robot/unitree_g1/g1_mocap_29dof.xml",
-                ik_config_file="assets/robot/unitree_g1/optitrack_to_g1.json",
+                robot_xml_file=robot_xml_file,
+                ik_config_file=ik_config_file,
                 aligned_fps=60.0,
             )
             self.joint_space_retargeter.g1_hack = True
@@ -1525,6 +1539,8 @@ class G1Retargeter:
 
         dof_pos = torch.zeros(29, device=tracked_pos.device)
         if self.joint_space_retarget:
+            num_actuated_dof = self.joint_space_retargeter.model.nv - 6
+            dof_pos = torch.zeros(num_actuated_dof, device=tracked_pos.device)
             human_data = {}
             for i, link_name in enumerate(self.LINK_ORDER):
                 link_pos = tracked_pos[i].detach().cpu().numpy()
