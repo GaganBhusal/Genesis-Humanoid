@@ -170,6 +170,21 @@ def evaluate_policy(
 
     # Load configs
     print(f"Loading configs from experiment: {exp_dir}")
+    
+    # Inspect actual algorithm type to prevent cryptic validation tracebacks
+    import yaml
+    with open(Path(exp_dir) / "configs" / "algo_cfg.yaml") as f:
+        algo_data = yaml.load(f, Loader=yaml.UnsafeLoader)
+    algo_type = algo_data.get("algorithm_type", "BC")
+    if algo_type == "PPO":
+        print("=" * 80)
+        print(f"\033[91mERROR: The experiment '{exp_name}' was trained with PPO, but you ran run_bc_motion.py!\033[0m")
+        print("Please run evaluation using run_ppo_motion.py instead:")
+        print(f"  .venv/bin/python examples/run_ppo_motion.py --exp_name {exp_name} --num_ckpt {num_ckpt} --eval True --show_viewer True")
+        print("=" * 80)
+        import sys
+        sys.exit(1)
+
     env_args = yaml_to_config(Path(exp_dir) / "configs" / "env_args.yaml", MotionEnvArgs)
     algo_cfg = yaml_to_config(Path(exp_dir) / "configs" / "algo_cfg.yaml", BCArgs)
 
@@ -256,7 +271,12 @@ def evaluate_policy(
 
         link_name_to_idx: dict[str, int] = {}
         for link_name in env.scene.objects.keys():
-            link_name_to_idx[link_name] = env_args.tracking_link_names.index(link_name)
+            if link_name in env_args.tracking_link_names:
+                link_name_to_idx[link_name] = env_args.tracking_link_names.index(link_name)
+            elif link_name == "left_wrist_yaw_link" and "left_wrist_roll_rubber_hand" in env_args.tracking_link_names:
+                link_name_to_idx[link_name] = env_args.tracking_link_names.index("left_wrist_roll_rubber_hand")
+            elif link_name == "right_wrist_yaw_link" and "right_wrist_roll_rubber_hand" in env_args.tracking_link_names:
+                link_name_to_idx[link_name] = env_args.tracking_link_names.index("right_wrist_roll_rubber_hand")
 
         while True:
             env.time_since_reset[0] = 0.0

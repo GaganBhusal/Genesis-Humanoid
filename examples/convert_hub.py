@@ -64,9 +64,13 @@ def hub_to_motion_data(
         "right_wrist_pitch_joint",
         "right_wrist_yaw_joint",
     ]
-    dof_index = []
-    for dof_name in lafan_order:
-        dof_index.append(dof_names.index(dof_name))
+    # Build mapping from indices in lafan_order to indices in dof_names
+    lafan_indices = []
+    robot_indices = []
+    for idx, dof_name in enumerate(lafan_order):
+        if dof_name in dof_names:
+            lafan_indices.append(idx)
+            robot_indices.append(dof_names.index(dof_name))
     motion_data = {}
     motion_data["fps"] = data["fps"]
     motion_data["link_names"] = link_names
@@ -79,7 +83,7 @@ def hub_to_motion_data(
     foot_contact_list = []
 
     def run() -> dict[str, Any]:
-        nonlocal env, data, motion_data, show_viewer, dof_index
+        nonlocal env, data, motion_data, show_viewer, lafan_indices, robot_indices
         last_update_time = time.time()
         foot_links_idx = env.robot.foot_links_idx
         quat_offset = quat_from_euler(torch.tensor([0.0, 0.0, 0.0]))
@@ -87,8 +91,8 @@ def hub_to_motion_data(
             pos = torch.tensor(data["root_trans_offset"][i], dtype=torch.float32)
             quat = torch.tensor(data["root_rot"][i], dtype=torch.float32)[[3, 0, 1, 2]]
             quat = quat_mul(quat, quat_offset)
-            dof_pos = torch.zeros(29, dtype=torch.float32)
-            dof_pos[dof_index] = torch.tensor(data["dof"][i], dtype=torch.float32)
+            dof_pos = torch.zeros(len(dof_names), dtype=torch.float32)
+            dof_pos[robot_indices] = torch.tensor(data["dof"][i], dtype=torch.float32)[lafan_indices]
             env.robot.set_state(pos=pos, quat=quat, dof_pos=dof_pos)
             env.update_buffers()
             pos_list.append(env.base_pos[0].clone())

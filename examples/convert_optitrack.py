@@ -41,15 +41,26 @@ def optitrack_to_motion_data(
     dof_names = env.dof_names
     all_robot_link_names = [link.name for link in env.robot.robot.links]
 
-    optitrack_link_names = list(optitrack_data["link_names"])
+    is_23dof = (len(dof_names) == 23)
+    left_wrist_name = "left_wrist_roll_rubber_hand" if is_23dof else "left_wrist_yaw_link"
+    right_wrist_name = "right_wrist_roll_rubber_hand" if is_23dof else "right_wrist_yaw_link"
+
     link_name_to_idx = {
-        "left_ankle_roll_link": optitrack_link_names.index("LeftFoot"),
-        "right_ankle_roll_link": optitrack_link_names.index("RightFoot"),
-        "left_wrist_yaw_link": optitrack_link_names.index("LeftHand"),
-        "right_wrist_yaw_link": optitrack_link_names.index("RightHand"),
-        "torso_link": optitrack_link_names.index("Spine1"),
-        "pelvis": optitrack_link_names.index("Hips"),
+        "left_ankle_roll_link": 0,
+        "right_ankle_roll_link": 1,
+        left_wrist_name: 2,
+        right_wrist_name: 3,
+        "torso_link": 4,
+        "pelvis": 5,
     }
+
+    from gs_env.sim.robots.config.registry import G1_dof_names
+    g1_indices = []
+    robot_indices = []
+    for idx, name in enumerate(G1_dof_names):
+        if name in dof_names:
+            g1_indices.append(idx)
+            robot_indices.append(dof_names.index(name))
 
     motion_data = {}
     motion_data["fps"] = optitrack_data["fps"]
@@ -175,10 +186,15 @@ def optitrack_to_motion_data(
             base_pos = retargeted["base_pos"].clone()  # (3,)
             base_quat = retargeted["base_quat"].clone()  # (4,)
             dof_pos = retargeted["dof_pos"].clone()  # (29,)
+
+            # Map 29-DOF to active robot's DOFs (handles 23-DOF seamlessly)
+            dof_pos_robot = torch.zeros(len(dof_names), dtype=dof_pos.dtype, device=dof_pos.device)
+            dof_pos_robot[robot_indices] = dof_pos[g1_indices]
+
             env.robot.set_state(
                 pos=base_pos.unsqueeze(0),
                 quat=base_quat.unsqueeze(0),
-                dof_pos=dof_pos.unsqueeze(0),
+                dof_pos=dof_pos_robot.unsqueeze(0),
             )
             env.update_buffers()
             quat_yaw = quat_from_angle_axis(
@@ -202,7 +218,7 @@ def optitrack_to_motion_data(
             # Extract state from environment
             pos_list.append(retargeted["base_pos"].clone())
             quat_list.append(retargeted["base_quat"].clone())
-            dof_pos_list.append(dof_pos.clone())
+            dof_pos_list.append(dof_pos_robot.clone())
             link_pos_list.append(env.link_positions[0].clone())
             link_quat_list.append(env.link_quaternions[0].clone())
             floor_terminate_mask_list.append(
@@ -274,7 +290,8 @@ if __name__ == "__main__":
     enable_timer = False
 
     # Find pickle files saved by optitrack_publisher.py in assets/optitrack
-    pkl_files = list(Path("./assets/optitrack").glob("*.pkl"))
+    # pkl_files = list(Path("./assets/optitrack").glob("*.pkl"))
+    pkl_files = ["/home/yayy/My/Codeeeeee/RAN/MotionWork/GVHMR/outputs/demo/a/hmr4d_results.pt"]
     # pkl_files = ["./assets/optitrack/little_step_0.pkl"]
 
     log_dir = Path("./assets/motion/optitrack")
